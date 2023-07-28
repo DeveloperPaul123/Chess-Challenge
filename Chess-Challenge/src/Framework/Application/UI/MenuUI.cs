@@ -49,6 +49,12 @@ namespace ChessChallenge.Application
                     ChallengeController.PlayerType.NegamaxTier2Bot);
             }
 
+            if (NextButtonInRow("MyBot vs Stockfish", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.StockFish);
+            }
+
             // Page buttons
             buttonPos.Y += breakSpacing;
 
