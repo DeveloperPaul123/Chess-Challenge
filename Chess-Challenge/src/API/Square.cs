@@ -8,13 +8,15 @@ namespace ChessChallenge.API
         /// Value from 0 to 7 representing files 'a' to 'h'
         /// </summary>
         public int File => Chess.BoardHelper.FileIndex(Index);
+
         /// <summary>
-		/// Value from 0 to 7 representing ranks '1' to '8'
-		/// </summary>
-		public int Rank => Chess.BoardHelper.RankIndex(Index);
+        /// Value from 0 to 7 representing ranks '1' to '8'
+        /// </summary>
+        public int Rank => Chess.BoardHelper.RankIndex(Index);
+
         /// <summary>
         /// Value from 0 to 63. The values map to the board like so:
-		/// 0 – 7 : a1 – h1, 8 – 15 : a2 – h2, ..., 56 – 63 : a8 – h8
+        /// 0 â€“ 7 : a1 â€“ h1, 8 â€“ 15 : a2 â€“ h2, ..., 56 â€“ 63 : a8 â€“ h8
         /// </summary>
         public readonly int Index;
 
