@@ -22,7 +22,8 @@ namespace ChessChallenge.Application
             EvilBot,
             NegamaxBot,
             NegamaxTier2Bot,
-            StockFish
+            StockFish,
+            MyBotPsT
         }
 
         // Game state
@@ -214,11 +215,12 @@ namespace ChessChallenge.Application
         {
             return type switch
             {
-                PlayerType.MyBot => new ChessPlayer(new MyBot(), type, GameDurationMilliseconds),
+                PlayerType.MyBot => new ChessPlayer(new MyBot(new PestoEvaluation()), type, GameDurationMilliseconds),
                 PlayerType.EvilBot => new ChessPlayer(new EvilBot(), type, GameDurationMilliseconds),
                 PlayerType.NegamaxBot => new ChessPlayer(new NegamaxBot(), type, GameDurationMilliseconds),
                 PlayerType.NegamaxTier2Bot => new ChessPlayer(new NegamaxTier2(), type, GameDurationMilliseconds),
                 PlayerType.StockFish => new ChessPlayer(new Stockfish(), type, GameDurationMilliseconds),
+                PlayerType.MyBotPsT => new ChessPlayer(new MyBot(new PestoEvaluation()), type, GameDurationMilliseconds),
                 _ => new ChessPlayer(new HumanPlayer(boardUI), type)
             };
         }
