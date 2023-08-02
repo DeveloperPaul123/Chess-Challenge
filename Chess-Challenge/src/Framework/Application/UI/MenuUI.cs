@@ -48,17 +48,18 @@ namespace ChessChallenge.Application
                 controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
                     ChallengeController.PlayerType.NegamaxTier2Bot);
             }
-            
-            if(NextButtonInRow("MyBot vs MyBot (PsT)", ref buttonPos, spacing, buttonSize))
-            {
-                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
-                    ChallengeController.PlayerType.MyBotPsT);
-            }
 
-            if (NextButtonInRow("MyBot vs Stockfish", ref buttonPos, spacing, buttonSize))
+
+            if (NextButtonInRow("MyBot vs Stockfish (0)", ref buttonPos, spacing, buttonSize))
             {
                 controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
                     ChallengeController.PlayerType.StockFish);
+            }
+
+            if (NextButtonInRow("MyBot vs Stockfish (10)", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.StockFish10);
             }
 
             // Page buttons

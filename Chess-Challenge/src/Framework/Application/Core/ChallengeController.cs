@@ -8,8 +8,11 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ChessChallenge.API;
 using static ChessChallenge.Application.Settings;
 using static ChessChallenge.Application.ConsoleHelper;
+using Board = ChessChallenge.Chess.Board;
+using Move = ChessChallenge.Chess.Move;
 
 namespace ChessChallenge.Application
 {
@@ -23,7 +26,7 @@ namespace ChessChallenge.Application
             NegamaxBot,
             NegamaxTier2Bot,
             StockFish,
-            MyBotPsT
+            StockFish10
         }
 
         // Game state
@@ -211,16 +214,30 @@ namespace ChessChallenge.Application
             }
         }
 
+        public static IChessBot? CreateBot(PlayerType type)
+        {
+            return type switch
+            {
+                PlayerType.MyBot => new MyBot(),
+                PlayerType.EvilBot => new EvilBot(),
+                PlayerType.NegamaxBot => new NegamaxBot(),
+                PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
+                PlayerType.StockFish => new Stockfish(),
+                PlayerType.StockFish10 => new Stockfish(10),
+                _ => null
+            };
+        }
+
         ChessPlayer CreatePlayer(PlayerType type)
         {
             return type switch
             {
-                PlayerType.MyBot => new ChessPlayer(new MyBot(new PestoEvaluation()), type, GameDurationMilliseconds),
+                PlayerType.MyBot => new ChessPlayer(new MyBot(), type, GameDurationMilliseconds),
                 PlayerType.EvilBot => new ChessPlayer(new EvilBot(), type, GameDurationMilliseconds),
                 PlayerType.NegamaxBot => new ChessPlayer(new NegamaxBot(), type, GameDurationMilliseconds),
                 PlayerType.NegamaxTier2Bot => new ChessPlayer(new NegamaxTier2(), type, GameDurationMilliseconds),
                 PlayerType.StockFish => new ChessPlayer(new Stockfish(), type, GameDurationMilliseconds),
-                PlayerType.MyBotPsT => new ChessPlayer(new MyBot(new PestoEvaluation()), type, GameDurationMilliseconds),
+                PlayerType.StockFish10 => new ChessPlayer(new Stockfish(10), type, GameDurationMilliseconds),
                 _ => new ChessPlayer(new HumanPlayer(boardUI), type)
             };
         }
