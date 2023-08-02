@@ -1,25 +1,20 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using ChessChallenge.API;
 
-namespace ChessChallenge.Example;
-
-public class Stockfish : IChessBot {
+public class Stockfish : IChessBot
+{
     private Process stockfishProcess;
+
     private StreamWriter Ins() => stockfishProcess.StandardInput;
+
     private StreamReader Outs() => stockfishProcess.StandardOutput;
 
-    /// <summary>
-    /// The skill level of stockfish. Max is 20, min is 0.
-    /// </summary>
-    private const int SKILL_LEVEL = 0;
-    
-    public Stockfish() {
-        var stockfishExe = Environment.GetEnvironmentVariable("STOCKFISH_EXE");
-        if (stockfishExe == null) {
-            throw new Exception("Missing environment variable: 'STOCKFISH_EXE'");
-        }
+    public Stockfish(int skillLevel = 0)
+    {
+        var stockfishExe = "/bin/stockfish";
 
         stockfishProcess = new();
         stockfishProcess.StartInfo.RedirectStandardOutput = true;
@@ -31,39 +26,55 @@ public class Stockfish : IChessBot {
         string? line;
         var isOk = false;
 
-        while ((line = Outs().ReadLine()) != null) {
-            if (line == "uciok") {
+        while ((line = Outs().ReadLine()) != null)
+        {
+            if (line == "uciok")
+            {
                 isOk = true;
                 break;
             }
         }
 
-        if (!isOk) {
+        if (!isOk)
+        {
             throw new Exception("Failed to communicate with stockfish");
         }
 
-        Ins().WriteLine($"setoption name Skill Level value {SKILL_LEVEL}");
+        Ins().WriteLine($"setoption name Skill Level value {skillLevel}");
+        Ins().WriteLine("ucinewgame");
     }
 
-    public Move Think(Board board, Timer timer) {
-        Ins().WriteLine("ucinewgame");
+    public Move Think(Board board, Timer timer)
+    {
         Ins().WriteLine($"position fen {board.GetFenString()}");
-        var timeString = board.IsWhiteToMove ? "wtime" : "btime";
-        Ins().WriteLine($"go {timeString} {timer.MillisecondsRemaining}");
+
+        string me = "w",
+            other = "b";
+        if (!board.IsWhiteToMove)
+        {
+            (me, other) = (other, me);
+        }
+        Ins()
+            .WriteLine(
+                $"go {me}time {timer.MillisecondsRemaining} {other}time {timer.OpponentMillisecondsRemaining}"
+            );
 
         string? line;
         Move? move = null;
 
-        while ((line = Outs().ReadLine()) != null) {
-            if (line.StartsWith("bestmove")) {
+        while ((line = Outs().ReadLine()) != null)
+        {
+            if (line.StartsWith("bestmove"))
+            {
                 var moveStr = line.Split()[1];
                 move = new Move(moveStr, board);
-                
+
                 break;
             }
         }
 
-        if (move == null) {
+        if (move == null)
+        {
             throw new Exception("Engine crashed");
         }
 
