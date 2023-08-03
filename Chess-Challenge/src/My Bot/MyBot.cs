@@ -1,49 +1,55 @@
 ﻿using System;
 using System.Linq;
 using ChessChallenge.API;
+using ChessChallenge.Chess;
+using Board = ChessChallenge.API.Board;
+using Move = ChessChallenge.API.Move;
 
 public class MyBot : IChessBot
 {
     // PeSTO evaluation
     // https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-    private readonly int[] _pieceValues =
+    private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
+
+    // None, Pawn, Knight, Bishop, Rook, Queen, King 
+    private readonly short[] PieceValues =
     {
-        0, 82, 337, 365, 477, 1025, 20000,
-        0, 94, 281, 297, 512, 936, 20000
+        82, 337, 365, 477, 1025, 20000, // Middlegame
+        94, 281, 297, 512, 936, 20000 // Endgame
     };
 
-    private readonly int[] _piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
-
-    // This is all the pesto value tables compressed into a single array
-    private static readonly ulong[] CompressedPestoValues =
+    // Big table packed with data from premade piece square tables
+    // Unpack using PackedEvaluationTables[set, rank] = file
+    private readonly decimal[] PackedPestoTables =
     {
-        657614902731556116, 420894446315227099, 384592972471695068, 312245244820264086, 364876803783607569,
-        366006824779723922, 366006826859316500, 786039115310605588, 421220596516513823, 366011295806342421,
-        366006826859316436, 366006896669578452, 162218943720801556, 440575073001255824, 657087419459913430,
-        402634039558223453, 347425219986941203, 365698755348489557, 311382605788951956, 147850316371514514,
-        329107007234708689, 402598430990222677, 402611905376114006, 329415149680141460, 257053881053295759,
-        291134268204721362, 492947507967247313, 367159395376767958, 384021229732455700, 384307098409076181,
-        402035762391246293, 328847661003244824, 365712019230110867, 366002427738801364, 384307168185238804,
-        347996828560606484, 329692156834174227, 365439338182165780, 386018218798040211, 456959123538409047,
-        347157285952386452, 365711880701965780, 365997890021704981, 221896035722130452, 384289231362147538,
-        384307167128540502, 366006826859320596, 366006826876093716, 366002360093332756, 366006824694793492,
-        347992428333053139, 457508666683233428, 329723156783776785, 329401687190893908, 366002356855326100,
-        366288301819245844, 329978030930875600, 420621693221156179, 422042614449657239, 384602117564867863,
-        419505151144195476, 366274972473194070, 329406075454444949, 275354286769374224, 366855645423297932,
-        329991151972070674, 311105941360174354, 256772197720318995, 365993560693875923, 258219435335676691,
-        383730812414424149, 384601907111998612, 401758895947998613, 420612834953622999, 402607438610388375,
-        329978099633296596, 67159620133902
+        63746705523041458768562654720m, 71818693703096985528394040064m, 75532537544690978830456252672m,
+        75536154932036771593352371712m, 76774085526445040292133284352m, 3110608541636285947269332480m,
+        936945638387574698250991104m, 75531285965747665584902616832m,
+        77047302762000299964198997571m, 3730792265775293618620982364m, 3121489077029470166123295018m,
+        3747712412930601838683035969m, 3763381335243474116535455791m, 8067176012614548496052660822m,
+        4977175895537975520060507415m, 2475894077091727551177487608m,
+        2458978764687427073924784380m, 3718684080556872886692423941m, 4959037324412353051075877138m,
+        3135972447545098299460234261m, 4371494653131335197311645996m, 9624249097030609585804826662m,
+        9301461106541282841985626641m, 2793818196182115168911564530m,
+        77683174186957799541255830262m, 4660418590176711545920359433m, 4971145620211324499469864196m,
+        5608211711321183125202150414m, 5617883191736004891949734160m, 7150801075091790966455611144m,
+        5619082524459738931006868492m, 649197923531967450704711664m,
+        75809334407291469990832437230m, 78322691297526401047122740223m, 4348529951871323093202439165m,
+        4990460191572192980035045640m, 5597312470813537077508379404m, 4980755617409140165251173636m,
+        1890741055734852330174483975m, 76772801025035254361275759599m,
+        75502243563200070682362835182m, 78896921543467230670583692029m, 2489164206166677455700101373m,
+        4338830174078735659125311481m, 4960199192571758553533648130m, 3420013420025511569771334658m,
+        1557077491473974933188251927m, 77376040767919248347203368440m,
+        73949978050619586491881614568m, 77043619187199676893167803647m, 1212557245150259869494540530m,
+        3081561358716686153294085872m, 3392217589357453836837847030m, 1219782446916489227407330320m,
+        78580145051212187267589731866m, 75798434925965430405537592305m,
+        68369566912511282590874449920m, 72396532057599326246617936384m, 75186737388538008131054524416m,
+        77027917484951889231108827392m, 73655004947793353634062267392m, 76417372019396591550492896512m,
+        74568981255592060493492515584m, 70529879645288096380279255040m,
     };
 
-    // used for move ordering: https://www.chessprogramming.org/MVV-LVA
-    // most valuable victim - least valuable attacker note that the order is based on the enumeration
-    // order for PieceType as it is used as an index
-    // Piece type values: 0-None, 1-Pawn, 2-Knight, 3-Bishop, 4-Rook, 5-Queen, 6-King 
-    // mvv -> queen, rook, bishop, knight, pawn (king is not considered)
-    private readonly int[] _mvvValues = { 0, 10, 20, 30, 40, 50, 0 };
-
-    // lva -> pawn, knight, bishop, rook, queen, king
-    private readonly int[] _lvaValues = { 0, 5, 4, 3, 2, 1, 0 };
+    // unpacked pesto table
+    private readonly int[][] UnpackedPestoTables;
 
     // match types for transposition table
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
@@ -55,25 +61,32 @@ public class MyBot : IChessBot
 #endif
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
-    private struct Transposition
-    {
-        public ulong ZobristHash = 0;
-        public int Evaluation = 0;
-        public sbyte Depth = 0;
-        public sbyte Flag = Invalid;
-        public Move Move = default;
-
-        public Transposition()
-        {
-        }
-    };
+    private record struct Transposition(
+        ulong ZobristHash,
+        int Evaluation,
+        sbyte Depth,
+        sbyte Flag,
+        Move Move);
 
     // 4.7 million entries, likely consuming about 151 MB
-    private const ulong TranspositionTableMask = 0x7FFFFF;
-    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableMask + 1];
+    private const ulong TranspositionTableEntries = 0x7FFFFF;
+    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries + 1];
 
     // maximum think time for each move 
     // private const int MaxThinkTime = 10 * 1000;
+
+    public MyBot()
+    {
+        UnpackedPestoTables = new int[64][];
+        UnpackedPestoTables = PackedPestoTables.Select(packedTable =>
+        {
+            int pieceType = 0;
+            return decimal.GetBits(packedTable).Take(3)
+                .SelectMany(c => BitConverter.GetBytes(c)
+                    .Select((byte square) => (int)((sbyte)square * 1.461) + PieceValues[pieceType++]))
+                .ToArray();
+        }).ToArray();
+    }
 
     /// <summary>
     /// Negamax search with alpha-beta pruning and transposition table
@@ -87,7 +100,7 @@ public class MyBot : IChessBot
     {
         if (depth <= 0) return Quiesce(board, alpha, beta);
 
-        ref var transposition = ref _transpositionTable[board.ZobristKey & TranspositionTableMask];
+        ref var transposition = ref _transpositionTable[board.ZobristKey & TranspositionTableEntries];
         if (transposition.ZobristHash == board.ZobristKey && transposition.Flag != Invalid &&
             transposition.Depth >= depth)
         {
@@ -147,17 +160,24 @@ public class MyBot : IChessBot
     private int GetMovePriority(Move move, Board board)
     {
         var priority = 0;
-        var tp = _transpositionTable[board.ZobristKey & TranspositionTableMask];
-        if (tp.Move == move && tp.ZobristHash == board.ZobristKey) priority += 1000;
-        if (move.IsCapture) priority = _mvvValues[(int)move.CapturePieceType] + _lvaValues[(int)move.MovePieceType];
+        var tp = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
+        if (tp.Move == move) priority += 1000000;
+
+        // MVV - LVA move ordering
+        // - https://www.chessprogramming.org/MVV-LVA
+        // - https://rustic-chess.org/search/ordering/mvv_lva.html
+        // The more valuable the captured piece is, and the less valuable the attacker is,
+        // the stronger the capture will be, and thus it will be ordered higher in the move list
+        if (move.IsCapture) priority = 1000 * (int)move.CapturePieceType - (int)move.MovePieceType;
         return priority;
     }
 
     private void OrderMoves(ref Move[] moves, Board board)
     {
-        var orderedMoves = moves.Select(m => new Tuple<Move, int>(m, GetMovePriority(m, board))).ToList();
-        orderedMoves.Sort((a, b) => b.Item2.CompareTo(a.Item2));
-        for (var i = 0; i < moves.Length; i++) moves[i] = orderedMoves[i].Item1;
+        var movePriorities = new int[moves.Length];
+        for (var i = 0; i < moves.Length; ++i) movePriorities[i] = GetMovePriority(moves[i], board);
+        Array.Sort(movePriorities, moves);
+        Array.Reverse(moves);
     }
 
     private int Quiesce(Board board, int alpha, int beta)
@@ -195,8 +215,6 @@ public class MyBot : IChessBot
     //     return ((maxThinkTime - currentThinkTime) > currentThinkTime * 3);
     // }
 
-    private int GetPestoValue(int index) => (int)(((CompressedPestoValues[index / 10] >> (6 * (index % 10))) & 63) - 20) * 8;
-
     public int Evaluate(Board board)
     {
         int mg = 0, eg = 0, phase = 0;
@@ -207,15 +225,13 @@ public class MyBot : IChessBot
             var isWhite = b == 0;
             for (var piece = PieceType.Pawn; piece <= PieceType.King; piece++)
             {
-                var mask = board.GetPieceBitboard(piece, isWhite);
-                while (mask != 0)
+                var pieceBitboard = board.GetPieceBitboard(piece, isWhite);
+                while (pieceBitboard != 0)
                 {
-                    phase += _piecePhase[(int)piece];
-                    var index = 128 * ((int)piece - 1) + BitboardHelper.ClearAndGetIndexOfLSB(ref mask) ^
-                                (isWhite ? 56 : 0);
-                    // subtract 1 when getting pesto value because pesto values are 1-indexed
-                    mg += GetPestoValue(index) + _pieceValues[(int)piece];
-                    eg += GetPestoValue(index + 64) + _pieceValues[(int)piece + 6];
+                    int sq = BitboardHelper.ClearAndGetIndexOfLSB(ref pieceBitboard) ^ (isWhite ? 56 : 0);
+                    mg += UnpackedPestoTables[sq][(int)piece - 1];
+                    eg += UnpackedPestoTables[sq][(int)piece - 1 + 6];
+                    phase += _piecePhase[(int)piece - 1];
                 }
             }
 
@@ -223,21 +239,19 @@ public class MyBot : IChessBot
             eg = -eg;
         }
 
-        return ((mg * phase + eg * (24 - phase)) / 24) * (board.IsWhiteToMove ? 1 : -1);
+        return (mg * phase + eg * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
     }
-
-    // private int Evaluate(Board board) => _chessEvaluator.Evaluate(board) * (board.IsWhiteToMove ? 1 : -1);
 
     public Move Think(Board board, Timer timer)
     {
-        var bestMove = _transpositionTable[board.ZobristKey & TranspositionTableMask];
+        var bestMove = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
 
         for (sbyte depth = 1;
              depth <= MaxDepth;
              depth++)
         {
             Search(board, MaxDepth, int.MinValue + 1, int.MaxValue - 1);
-            bestMove = _transpositionTable[board.ZobristKey & TranspositionTableMask];
+            bestMove = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
 
             var currentThinkTime = timer.MillisecondsElapsedThisTurn;
             var shouldExecuteNextDepth = ((10 * 1000) - currentThinkTime) > (currentThinkTime * 3);

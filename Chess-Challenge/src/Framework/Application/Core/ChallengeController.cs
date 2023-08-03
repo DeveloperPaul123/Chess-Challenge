@@ -22,6 +22,7 @@ namespace ChessChallenge.Application
         {
             Human,
             MyBot,
+            MyBotv2,
             EvilBot,
             NegamaxBot,
             NegamaxTier2Bot,
@@ -219,6 +220,7 @@ namespace ChessChallenge.Application
             return type switch
             {
                 PlayerType.MyBot => new MyBot(),
+                PlayerType.MyBotv2 => new MyBotv2(),
                 PlayerType.EvilBot => new EvilBot(),
                 PlayerType.NegamaxBot => new NegamaxBot(),
                 PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
@@ -230,16 +232,9 @@ namespace ChessChallenge.Application
 
         ChessPlayer CreatePlayer(PlayerType type)
         {
-            return type switch
-            {
-                PlayerType.MyBot => new ChessPlayer(new MyBot(), type, GameDurationMilliseconds),
-                PlayerType.EvilBot => new ChessPlayer(new EvilBot(), type, GameDurationMilliseconds),
-                PlayerType.NegamaxBot => new ChessPlayer(new NegamaxBot(), type, GameDurationMilliseconds),
-                PlayerType.NegamaxTier2Bot => new ChessPlayer(new NegamaxTier2(), type, GameDurationMilliseconds),
-                PlayerType.StockFish => new ChessPlayer(new Stockfish(), type, GameDurationMilliseconds),
-                PlayerType.StockFish10 => new ChessPlayer(new Stockfish(10), type, GameDurationMilliseconds),
-                _ => new ChessPlayer(new HumanPlayer(boardUI), type)
-            };
+            return type != PlayerType.Human
+                ? new ChessPlayer(CreateBot(type) ?? throw new InvalidOperationException(), type, GameDurationMilliseconds)
+                : new ChessPlayer(new HumanPlayer(boardUI), type);
         }
 
         static int GetTokenCount()
