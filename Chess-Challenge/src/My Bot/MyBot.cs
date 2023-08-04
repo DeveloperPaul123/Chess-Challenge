@@ -1,12 +1,14 @@
 ﻿using System;
+using System.Collections;
 using System.Linq;
 using ChessChallenge.API;
-using ChessChallenge.Chess;
 using Board = ChessChallenge.API.Board;
 using Move = ChessChallenge.API.Move;
+using Timer = ChessChallenge.API.Timer;
 
 public class MyBot : IChessBot
 {
+    private Move bestMoveRoot = Move.NullMove;
     // PeSTO evaluation
     // https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
@@ -14,8 +16,8 @@ public class MyBot : IChessBot
     // None, Pawn, Knight, Bishop, Rook, Queen, King 
     private readonly short[] PieceValues =
     {
-        82, 337, 365, 477, 1025, 20000, // Middlegame
-        94, 281, 297, 512, 936, 20000 // Endgame
+        82, 337, 365, 477, 1025, 10000, // Middlegame
+        94, 281, 297, 512, 936, 10000 // Endgame
     };
 
     // Big table packed with data from premade piece square tables
@@ -56,8 +58,10 @@ public class MyBot : IChessBot
 
 #if DEBUG
     private const int MaxDepth = 3;
+    private const bool CheckThinkTime = false;
 #else
     private const int MaxDepth = 6;
+    private const bool CheckThinkTime = true;
 #endif
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
@@ -68,9 +72,9 @@ public class MyBot : IChessBot
         sbyte Flag,
         Move Move);
 
-    // 4.7 million entries, likely consuming about 151 MB
-    private const ulong TranspositionTableEntries = 0x7FFFFF;
-    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries + 1];
+    private const ulong TranspositionTableEntries = (1 << 20);
+    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
+    private const int TimeCheckFactor = 30;
 
     // maximum think time for each move 
     // private const int MaxThinkTime = 10 * 1000;
@@ -92,67 +96,69 @@ public class MyBot : IChessBot
     /// Negamax search with alpha-beta pruning and transposition table
     /// </summary>
     /// <param name="board"></param>
+    /// <param name="timer"></param>
     /// <param name="depth"></param>
+    /// <param name="ply">Current ply (number of moves)</param>
     /// <param name="alpha"></param>
     /// <param name="beta"></param>
     /// <returns></returns>
-    private int Search(Board board, int depth, int alpha, int beta)
+    private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta)
     {
-        if (depth <= 0) return Quiesce(board, alpha, beta);
+        var quiesceSearch = depth <= 0;
+        var notRoot = ply > 0;
+        var bestScore = int.MinValue + 10000;
+        if (notRoot && board.IsRepeatedPosition()) return 0;
 
-        ref var transposition = ref _transpositionTable[board.ZobristKey & TranspositionTableEntries];
-        if (transposition.ZobristHash == board.ZobristKey && transposition.Flag != Invalid &&
-            transposition.Depth >= depth)
+        var transposition = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
+        if (notRoot && transposition.ZobristHash == board.ZobristKey && transposition.Depth >= depth && (
+                transposition.Flag == Exact
+                || transposition.Flag == LowerBound && transposition.Evaluation >= beta
+                || transposition.Evaluation == UpperBound && transposition.Evaluation <= alpha)) return transposition.Evaluation;
+
+        var evaluation = Evaluate(board);
+
+        if (quiesceSearch)
         {
-            switch (transposition.Flag)
-            {
-                case Exact:
-                    return transposition.Evaluation;
-                case LowerBound:
-                    alpha = Math.Max(alpha, transposition.Evaluation);
-                    break;
-                case UpperBound:
-                    beta = Math.Min(beta, transposition.Evaluation);
-                    break;
-            }
-
-            if (alpha >= beta) return transposition.Evaluation;
+            bestScore = evaluation;
+            if (bestScore >= beta) return bestScore;
+            alpha = Math.Max(alpha, bestScore);
         }
 
-        // discourage draws
-        if (board.IsDraw())
-            return -10;
-        // really hate to lose
-        if (board.IsInCheckmate()) return int.MinValue + board.PlyCount;
+        var moves = board.GetLegalMoves(quiesceSearch);
 
-        var startingAlpha = alpha;
-        var moves = board.GetLegalMoves();
+        // check for terminal position
+        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
+
         OrderMoves(ref moves, board);
 
-        var bestScore = int.MinValue + 1;
-        var bestMove = moves[0];
+        var bestMove = Move.NullMove;
+        var startingAlpha = alpha;
+
         foreach (var move in moves)
         {
-            board.MakeMove(move);
-            var eval = -Search(board, depth - 1, -beta, -alpha);
-            board.UndoMove(move);
-            if (bestScore < eval)
-            {
-                bestScore = eval;
-                bestMove = move;
-            }
+            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) return 30000;
 
-            alpha = Math.Max(alpha, bestScore);
+            board.MakeMove(move);
+            var eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
+            board.UndoMove(move);
+            if (eval <= bestScore) continue;
+
+            // update our best score, move
+            bestScore = eval;
+            bestMove = move;
+            // update move at root
+            if (ply == 0) bestMoveRoot = move;
+
+            // update alpha and check for beta cutoff
+            alpha = Math.Max(alpha, eval);
             if (alpha >= beta) break;
         }
 
-        transposition.Evaluation = bestScore;
-        transposition.ZobristHash = board.ZobristKey;
-        if (bestScore < startingAlpha) transposition.Flag = UpperBound;
-        else if (bestScore >= beta) transposition.Flag = LowerBound;
-        else transposition.Flag = Exact;
-        transposition.Depth = (sbyte)depth;
-        transposition.Move = bestMove;
+        // note we use the original alpha
+        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
+
+        _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
+            bestScore, (sbyte)depth, bound, bestMove);
 
         return bestScore;
     }
@@ -160,7 +166,7 @@ public class MyBot : IChessBot
     private int PopulationCount(Board board, bool isWhite)
     {
         var priority = 0;
-        var tp = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
+        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
         if (tp.Move == move) priority += 1000000;
 
         // MVV - LVA move ordering
@@ -174,45 +180,11 @@ public class MyBot : IChessBot
 
     private void OrderMoves(ref Move[] moves, Board board)
     {
-        var movePriorities = new int[moves.Length];
-        for (var i = 0; i < moves.Length; ++i) movePriorities[i] = GetMovePriority(moves[i], board);
-        Array.Sort(movePriorities, moves);
+        var moveScores = new int[moves.Length];
+        for (var i = 0; i < moves.Length; ++i) moveScores[i] = GetMovePriority(moves[i], board);
+        Array.Sort(moveScores, moves);
         Array.Reverse(moves);
     }
-
-    private int Quiesce(Board board, int alpha, int beta)
-    {
-        Move[] moves;
-        if (board.IsInCheck()) moves = board.GetLegalMoves();
-        else
-        {
-            count++;
-            bitBoard &= bitBoard - 1; // reset LS1B
-        }
-
-        alpha = Math.Max(Evaluate(board), alpha);
-        if (alpha >= beta) return beta;
-
-        OrderMoves(ref moves, board);
-
-        foreach (var m in moves)
-        {
-            board.MakeMove(m);
-            var evaluation = -Quiesce(board, -beta, -alpha);
-            board.UndoMove(m);
-
-            alpha = Math.Max(evaluation, alpha);
-            if (alpha >= beta) break;
-        }
-
-        return alpha;
-    }
-
-    // private static bool ShouldExecuteNextDepth(Timer timer, int maxThinkTime)
-    // {
-    //     var currentThinkTime = timer.MillisecondsElapsedThisTurn;
-    //     return ((maxThinkTime - currentThinkTime) > currentThinkTime * 3);
-    // }
 
     public int Evaluate(Board board)
     {
@@ -224,12 +196,14 @@ public class MyBot : IChessBot
             var isWhite = b == 0;
             for (var piece = PieceType.Pawn; piece <= PieceType.King; piece++)
             {
-                var pieceBitboard = board.GetPieceBitboard(piece, isWhite);
-                while (pieceBitboard != 0)
+                var bitboard = board.GetPieceBitboard(piece, isWhite);
+                while (bitboard != 0)
                 {
-                    int sq = BitboardHelper.ClearAndGetIndexOfLSB(ref pieceBitboard) ^ (isWhite ? 56 : 0);
+                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (isWhite ? 56 : 0);
                     mg += UnpackedPestoTables[sq][(int)piece - 1];
-                    eg += UnpackedPestoTables[sq][(int)piece - 1 + 6];
+                    // endgame value is in the same array, but offset by 6
+                    // instead of doing piece -1 + 6, we can just do piece + 5
+                    eg += UnpackedPestoTables[sq][(int)piece + 5];
                     phase += _piecePhase[(int)piece - 1];
                 }
             }
@@ -243,20 +217,18 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        var bestMove = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
-
+        bestMoveRoot = Move.NullMove;
+        // https://www.chessprogramming.org/Iterative_Deepening
         for (sbyte depth = 1;
              depth <= MaxDepth;
              depth++)
         {
-            Search(board, MaxDepth, int.MinValue + 1, int.MaxValue - 1);
-            bestMove = _transpositionTable[board.ZobristKey & TranspositionTableEntries];
+            Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
-            var currentThinkTime = timer.MillisecondsElapsedThisTurn;
-            var shouldExecuteNextDepth = ((10 * 1000) - currentThinkTime) > (currentThinkTime * 3);
-
-            if (!shouldExecuteNextDepth) break;
+            // check if we're out of time
+            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
         }
-        return bestMove;
+
+        return bestMoveRoot.IsNull ? board.GetLegalMoves().First() : bestMoveRoot;
     }
 }
