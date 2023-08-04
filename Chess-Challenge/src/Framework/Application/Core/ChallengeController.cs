@@ -23,6 +23,7 @@ namespace ChessChallenge.Application
             Human,
             MyBot,
             MyBotv2,
+            MyBotv3,
             EvilBot,
             NegamaxBot,
             NegamaxTier2Bot,
@@ -221,6 +222,7 @@ namespace ChessChallenge.Application
             {
                 PlayerType.MyBot => new MyBot(),
                 PlayerType.MyBotv2 => new MyBotv2(),
+                PlayerType.MyBotv3 => new MyBotv3(),
                 PlayerType.EvilBot => new EvilBot(),
                 PlayerType.NegamaxBot => new NegamaxBot(),
                 PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
@@ -451,7 +453,7 @@ namespace ChessChallenge.Application
         public string AllPGNs => pgns.ToString();
 
 
-        bool IsLegal(Move givenMove)
+        private bool IsLegal(Move givenMove)
         {
             var moves = moveGenerator.GenerateMoves(board);
             foreach (var legalMove in moves)
