@@ -8,7 +8,6 @@ using Timer = ChessChallenge.API.Timer;
 
 public class MyBot : IChessBot
 {
-    private Move bestMoveRoot = Move.NullMove;
     // PeSTO evaluation
     // https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
@@ -51,7 +50,7 @@ public class MyBot : IChessBot
     };
 
     // unpacked pesto table
-    private readonly int[][] UnpackedPestoTables;
+    private readonly int[][] _unpackedPestoTables;
 
     // match types for transposition table
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
@@ -60,9 +59,14 @@ public class MyBot : IChessBot
     private const int MaxDepth = 3;
     private const bool CheckThinkTime = false;
 #else
-    private const int MaxDepth = 6;
+    private const int MaxDepth = 50;
     private const bool CheckThinkTime = true;
 #endif
+
+    private Move _bestMoveRoot = Move.NullMove;
+
+    private readonly Move[,] _killerMoves;
+    private const int MaxKillerMoves = 2;
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
     private record struct Transposition(
@@ -81,8 +85,9 @@ public class MyBot : IChessBot
 
     public MyBot()
     {
-        UnpackedPestoTables = new int[64][];
-        UnpackedPestoTables = PackedPestoTables.Select(packedTable =>
+        _killerMoves = new Move[MaxKillerMoves, MaxDepth];
+        _unpackedPestoTables = new int[64][];
+        _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
         {
             int pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
@@ -129,7 +134,7 @@ public class MyBot : IChessBot
         // check for terminal position
         if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
 
-        OrderMoves(ref moves, board);
+        OrderMoves(ref moves, board, ply);
 
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
@@ -147,41 +152,69 @@ public class MyBot : IChessBot
             bestScore = eval;
             bestMove = move;
             // update move at root
-            if (ply == 0) bestMoveRoot = move;
+            if (ply == 0) _bestMoveRoot = move;
 
             // update alpha and check for beta cutoff
             alpha = Math.Max(alpha, eval);
             if (alpha >= beta) break;
         }
 
-        // note we use the original alpha
-        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
+        if (!quiesceSearch)
+        {
+            // after finding the best move, store it in the transposition table
+            // note we use the original alpha
+            var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
+            // assign killer move in the case of a beta cutoff
+            if (bestScore >= beta && !bestMove.IsCapture)
+            {
+                if (bestMove != _killerMoves[0, ply])
+                    // shift moves down
+                    (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
 
-        _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
-            bestScore, (sbyte)depth, bound, bestMove);
+            }
+            _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
+                bestScore, (sbyte)depth, bound, bestMove);
+
+        }
 
         return bestScore;
     }
 
-    private int PopulationCount(Board board, bool isWhite)
-    {
-        var priority = 0;
-        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (tp.Move == move) priority += 1000000;
+    private const int MvvLvaOffset = 5000;
+    private const int MvvLvaFactor = 1000;
+    private const int TranspositionTableSortValue = 1000000;
+    private const int KillerValue = 100;
 
+    private int GetMovePriority(Move move, Board board, int ply)
+    {
+        var priority = MvvLvaOffset;
+        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
+        if (tp.Move == move) priority += TranspositionTableSortValue;
         // MVV - LVA move ordering
         // - https://www.chessprogramming.org/MVV-LVA
         // - https://rustic-chess.org/search/ordering/mvv_lva.html
         // The more valuable the captured piece is, and the less valuable the attacker is,
         // the stronger the capture will be, and thus it will be ordered higher in the move list
-        if (move.IsCapture) priority = 1000 * (int)move.CapturePieceType - (int)move.MovePieceType;
+        // max score could be 1000 * 6 - 1 = 5999
+        else if (move.IsCapture) priority += MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
+        else
+        {
+            for (var i = 0; i < MaxKillerMoves; i++)
+            {
+                if (_killerMoves[i, ply] != move) continue;
+
+                priority += i * KillerValue;
+                break;
+            }
+        }
+
         return priority;
     }
 
-    private void OrderMoves(ref Move[] moves, Board board)
+    private void OrderMoves(ref Move[] moves, Board board, int ply)
     {
         var moveScores = new int[moves.Length];
-        for (var i = 0; i < moves.Length; ++i) moveScores[i] = GetMovePriority(moves[i], board);
+        for (var i = 0; i < moves.Length; ++i) moveScores[i] = GetMovePriority(moves[i], board, ply);
         Array.Sort(moveScores, moves);
         Array.Reverse(moves);
     }
@@ -200,10 +233,10 @@ public class MyBot : IChessBot
                 while (bitboard != 0)
                 {
                     var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (isWhite ? 56 : 0);
-                    mg += UnpackedPestoTables[sq][(int)piece - 1];
+                    mg += _unpackedPestoTables[sq][(int)piece - 1];
                     // endgame value is in the same array, but offset by 6
                     // instead of doing piece -1 + 6, we can just do piece + 5
-                    eg += UnpackedPestoTables[sq][(int)piece + 5];
+                    eg += _unpackedPestoTables[sq][(int)piece + 5];
                     phase += _piecePhase[(int)piece - 1];
                 }
             }
@@ -217,7 +250,7 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        bestMoveRoot = Move.NullMove;
+        _bestMoveRoot = Move.NullMove;
         // https://www.chessprogramming.org/Iterative_Deepening
         for (sbyte depth = 1;
              depth <= MaxDepth;
@@ -229,6 +262,6 @@ public class MyBot : IChessBot
             if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
         }
 
-        return bestMoveRoot.IsNull ? board.GetLegalMoves().First() : bestMoveRoot;
+        return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
     }
 }
