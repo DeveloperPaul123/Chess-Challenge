@@ -13,7 +13,7 @@ namespace ChessChallenge.UCI
         Chess.Board board;
         APIMoveGen moveGen;
 
-        private static readonly string DefaultFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        // private static readonly string DefaultFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
         public UciBot(IChessBot? bot, ChallengeController.PlayerType type)
         {
