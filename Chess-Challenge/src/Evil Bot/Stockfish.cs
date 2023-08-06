@@ -14,7 +14,7 @@ public class Stockfish : IChessBot
 
     public Stockfish(int skillLevel = 0)
     {
-        var stockfishExe = "/bin/stockfish";
+        var stockfishExe = "stockfish";
 
         stockfishProcess = new();
         stockfishProcess.StartInfo.RedirectStandardOutput = true;
