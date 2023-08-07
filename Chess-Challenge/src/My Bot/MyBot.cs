@@ -97,6 +97,11 @@ public class MyBot : IChessBot
         }).ToArray();
     }
 
+    // TODO: Remove to save tokens
+    private const int MvvLvaFactor = 1000;
+    private const int TranspositionTableSortValue = 1000000;
+    private const int KillerValue = 10;
+
     /// <summary>
     /// Negamax search with alpha-beta pruning and transposition table
     /// </summary>
@@ -129,12 +134,37 @@ public class MyBot : IChessBot
             alpha = Math.Max(alpha, bestScore);
         }
 
-        var moves = board.GetLegalMoves(quiesceSearch);
+        var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
+            move =>
+                {
+                    var priority = 0;
+                    var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
+                    if (tp.Move == move) priority += TranspositionTableSortValue;
+                    // MVV - LVA move ordering
+                    // - https://www.chessprogramming.org/MVV-LVA
+                    // - https://rustic-chess.org/search/ordering/mvv_lva.html
+                    // The more valuable the captured piece is, and the less valuable the attacker is,
+                    // the stronger the capture will be, and thus it will be ordered higher in the move list
+                    // max score could be 1000 * 6 - 1 = 5999
+                    else if (move.IsCapture)
+                        priority += MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
+                    else
+                    {
+                        for (var i = 0; i < MaxKillerMoves; i++)
+                        {
+                            if (_killerMoves[i, ply] != move) continue;
+
+                            priority += (i + 1) * KillerValue;
+                            break;
+                        }
+                    }
+
+                    return priority;
+                }
+            ).ToArray();
 
         // check for terminal position
         if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
-
-        OrderMoves(ref moves, board, ply);
 
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
