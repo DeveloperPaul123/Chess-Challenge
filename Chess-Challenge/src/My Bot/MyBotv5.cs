@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Linq;
 using ChessChallenge.API;
 using Board = ChessChallenge.API.Board;
