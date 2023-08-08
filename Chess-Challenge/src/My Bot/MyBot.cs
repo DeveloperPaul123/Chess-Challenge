@@ -15,8 +15,8 @@ public class MyBot : IChessBot
     // None, Pawn, Knight, Bishop, Rook, Queen, King 
     private readonly short[] PieceValues =
     {
-        82, 337, 365, 477, 1025, 10000, // Middlegame
-        94, 281, 297, 512, 936, 10000 // Endgame
+        82, 337, 365, 477, 1025, 0, // Middlegame
+        94, 281, 297, 512, 936, 0 // Endgame
     };
 
     // Big table packed with data from premade piece square tables
