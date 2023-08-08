@@ -210,45 +210,6 @@ public class MyBot : IChessBot
         return bestScore;
     }
 
-    private const int MvvLvaOffset = 5000;
-    private const int MvvLvaFactor = 1000;
-    private const int TranspositionTableSortValue = 1000000;
-    private const int KillerValue = 100;
-
-    private int GetMovePriority(Move move, Board board, int ply)
-    {
-        var priority = MvvLvaOffset;
-        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (tp.Move == move) priority += TranspositionTableSortValue;
-        // MVV - LVA move ordering
-        // - https://www.chessprogramming.org/MVV-LVA
-        // - https://rustic-chess.org/search/ordering/mvv_lva.html
-        // The more valuable the captured piece is, and the less valuable the attacker is,
-        // the stronger the capture will be, and thus it will be ordered higher in the move list
-        // max score could be 1000 * 6 - 1 = 5999
-        else if (move.IsCapture) priority += MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
-        else
-        {
-            for (var i = 0; i < MaxKillerMoves; i++)
-            {
-                if (_killerMoves[i, ply] != move) continue;
-
-                priority += i * KillerValue;
-                break;
-            }
-        }
-
-        return priority;
-    }
-
-    private void OrderMoves(ref Move[] moves, Board board, int ply)
-    {
-        var moveScores = new int[moves.Length];
-        for (var i = 0; i < moves.Length; ++i) moveScores[i] = GetMovePriority(moves[i], board, ply);
-        Array.Sort(moveScores, moves);
-        Array.Reverse(moves);
-    }
-
     public int Evaluate(Board board)
     {
         int mg = 0, eg = 0, phase = 0;
