@@ -98,9 +98,32 @@ public class MyBot : IChessBot
     }
 
     // TODO: Remove to save tokens
+    private const int MvvLvaOffset = 5000;
     private const int MvvLvaFactor = 1000;
     private const int TranspositionTableSortValue = 1000000;
     private const int KillerValue = 10;
+
+    private int GetMovePriority(Move move, Board board, int ply)
+    {
+        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
+        if (tp.Move == move) return MvvLvaOffset + TranspositionTableSortValue;
+        // MVV - LVA move ordering
+        // - https://www.chessprogramming.org/MVV-LVA
+        // - https://rustic-chess.org/search/ordering/mvv_lva.html
+        // The more valuable the captured piece is, and the less valuable the attacker is,
+        // the stronger the capture will be, and thus it will be ordered higher in the move list
+        // max score could be 1000 * 6 - 1 = 5999
+        if (move.IsCapture) return MvvLvaOffset + MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
+        for (var i = 0; i < MaxKillerMoves; i++)
+        {
+            if (_killerMoves[i, ply] == move)
+            {
+                return MvvLvaOffset - i * KillerValue;
+            }
+        }
+
+        return 0;
+    }
 
     /// <summary>
     /// Negamax search with alpha-beta pruning and transposition table
@@ -116,14 +139,15 @@ public class MyBot : IChessBot
     {
         var quiesceSearch = depth <= 0;
         var notRoot = ply > 0;
-        var bestScore = int.MinValue + 10000;
+        var bestScore = int.MinValue + 1;
         if (notRoot && board.IsRepeatedPosition()) return 0;
 
         var transposition = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
         if (notRoot && transposition.ZobristHash == board.ZobristKey && transposition.Depth >= depth && (
                 transposition.Flag == Exact
                 || transposition.Flag == LowerBound && transposition.Evaluation >= beta
-                || transposition.Evaluation == UpperBound && transposition.Evaluation <= alpha)) return transposition.Evaluation;
+                || transposition.Evaluation == UpperBound && transposition.Evaluation <= alpha
+            )) return transposition.Evaluation;
 
         var evaluation = Evaluate(board);
 
@@ -135,36 +159,7 @@ public class MyBot : IChessBot
         }
 
         var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
-            move =>
-                {
-                    var priority = 0;
-                    var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-                    if (tp.Move == move) priority += TranspositionTableSortValue;
-                    // MVV - LVA move ordering
-                    // - https://www.chessprogramming.org/MVV-LVA
-                    // - https://rustic-chess.org/search/ordering/mvv_lva.html
-                    // The more valuable the captured piece is, and the less valuable the attacker is,
-                    // the stronger the capture will be, and thus it will be ordered higher in the move list
-                    // max score could be 1000 * 6 - 1 = 5999
-                    else if (move.IsCapture)
-                        priority += MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
-                    else
-                    {
-                        for (var i = 0; i < MaxKillerMoves; i++)
-                        {
-                            if (_killerMoves[i, ply] != move) continue;
-
-                            priority += (i + 1) * KillerValue;
-                            break;
-                        }
-                    }
-
-                    return priority;
-                }
-            ).ToArray();
-
-        // check for terminal position
-        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
+            move => GetMovePriority(move, board, ply)).ToArray();
 
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
@@ -176,36 +171,35 @@ public class MyBot : IChessBot
             board.MakeMove(move);
             var eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
             board.UndoMove(move);
-            if (eval <= bestScore) continue;
-
-            // update our best score, move
-            bestScore = eval;
-            bestMove = move;
-            // update move at root
-            if (ply == 0) _bestMoveRoot = move;
-
-            // update alpha and check for beta cutoff
-            alpha = Math.Max(alpha, eval);
-            if (alpha >= beta) break;
-        }
-
-        if (!quiesceSearch)
-        {
-            // after finding the best move, store it in the transposition table
-            // note we use the original alpha
-            var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
-            // assign killer move in the case of a beta cutoff
-            if (bestScore >= beta && !bestMove.IsCapture)
+            if (eval > bestScore)
             {
-                if (bestMove != _killerMoves[0, ply])
-                    // shift moves down
-                    (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
+                bestScore = eval;
+                bestMove = move;
+                // update move at root
+                if (ply == 0) _bestMoveRoot = move;
 
+                // update alpha and check for beta cutoff
+                alpha = Math.Max(alpha, eval);
+                if (alpha >= beta) break;
             }
-            _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
-                bestScore, (sbyte)depth, bound, bestMove);
+        }
+
+        // check for terminal position
+        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
+
+        // after finding the best move, store it in the transposition table
+        // note we use the original alpha
+        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
+        // assign killer move in the case of a beta cutoff
+        if (bestScore >= beta && !bestMove.IsCapture)
+        {
+            if (bestMove != _killerMoves[0, ply])
+                // shift moves down
+                (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
 
         }
+        _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
+            bestScore, (sbyte)depth, bound, bestMove);
 
         return bestScore;
     }
@@ -247,7 +241,7 @@ public class MyBot : IChessBot
              depth <= MaxDepth;
              depth++)
         {
-            Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
+            int score = Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
             if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
