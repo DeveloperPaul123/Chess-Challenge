@@ -8,11 +8,11 @@ public class MyBot : IChessBot
     // https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
 
-    // None, Pawn, Knight, Bishop, Rook, Queen, King 
+    // Pawn, Knight, Bishop, Rook, Queen, King 
     private readonly short[] PieceValues =
     {
-        82, 337, 365, 477, 1025, 0, // Middlegame
-        94, 281, 297, 512, 936, 0 // Endgame
+        82, 337, 365, 477, 1025, 9468, // Middlegame
+        94, 281, 297, 512, 936, 10000 // Endgame
     };
 
     // Big table packed with data from premade piece square tables
@@ -61,8 +61,11 @@ public class MyBot : IChessBot
 
     private Move _bestMoveRoot = Move.NullMove;
 
-    private readonly Move[,] _killerMoves;
+    private readonly Move[,] _killerMoves = new Move[MaxKillerMoves, MaxDepth];
     private const int MaxKillerMoves = 2;
+
+    // side, move from, move to
+    private readonly int[,,] _moveHistory = new int[MaxDepth, 64, 64];
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
     private record struct Transposition(
@@ -81,7 +84,6 @@ public class MyBot : IChessBot
 
     public MyBot()
     {
-        _killerMoves = new Move[MaxKillerMoves, MaxDepth];
         _unpackedPestoTables = new int[64][];
         _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
         {
@@ -94,43 +96,20 @@ public class MyBot : IChessBot
     }
 
     // TODO: Remove to save tokens
-    private const int MvvLvaOffset = 5000;
     private const int MvvLvaFactor = 1000;
     private const int TranspositionTableSortValue = 1000000;
-    private const int KillerValue = 10;
+    private const int KillerValue = 1000;
 
     private int GetMovePriority(Move move, Board board, int ply)
     {
-        var tp = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (tp.Move == move) return MvvLvaOffset + TranspositionTableSortValue;
-        // MVV - LVA move ordering
-        // - https://www.chessprogramming.org/MVV-LVA
-        // - https://rustic-chess.org/search/ordering/mvv_lva.html
-        // The more valuable the captured piece is, and the less valuable the attacker is,
-        // the stronger the capture will be, and thus it will be ordered higher in the move list
-        // max score could be 1000 * 6 - 1 = 5999
-        if (move.IsCapture) return MvvLvaOffset + MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType;
-        for (var i = 0; i < MaxKillerMoves; i++)
-        {
-            if (_killerMoves[i, ply] == move)
-            {
-                return MvvLvaOffset - i * KillerValue;
-            }
-        }
-
-        return 0;
+        return
+            _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? TranspositionTableSortValue :
+            move.IsCapture ? MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType :
+            _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? KillerValue :
+            _moveHistory[ply, move.StartSquare.Index, move.TargetSquare.Index];
     }
 
-    /// <summary>
     /// Negamax search with alpha-beta pruning and transposition table
-    /// </summary>
-    /// <param name="board"></param>
-    /// <param name="timer"></param>
-    /// <param name="depth"></param>
-    /// <param name="ply">Current ply (number of moves)</param>
-    /// <param name="alpha"></param>
-    /// <param name="beta"></param>
-    /// <returns></returns>
     private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta)
     {
         var quiesceSearch = depth <= 0;
@@ -181,6 +160,11 @@ public class MyBot : IChessBot
 
             if (eval > bestScore)
             {
+                if (!move.IsCapture && !quiesceSearch)
+                    // add it to history
+                    _moveHistory[ply, move.StartSquare.Index,
+                        move.TargetSquare.Index] += depth * depth;
+
                 bestScore = eval;
                 bestMove = move;
                 // update move at root
@@ -246,6 +230,12 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         _bestMoveRoot = Move.NullMove;
+
+        // clear killer moves
+        Array.Clear(_killerMoves, 0, _killerMoves.Length);
+        // clear history
+        Array.Clear(_moveHistory, 0, _moveHistory.Length);
+
         // https://www.chessprogramming.org/Iterative_Deepening
         for (sbyte depth = 1;
              depth <= MaxDepth;
