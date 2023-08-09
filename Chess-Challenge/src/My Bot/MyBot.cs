@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Collections;
 using System.Linq;
 using ChessChallenge.API;
-using Board = ChessChallenge.API.Board;
-using Move = ChessChallenge.API.Move;
-using Timer = ChessChallenge.API.Timer;
 
 public class MyBot : IChessBot
 {
@@ -172,7 +168,7 @@ public class MyBot : IChessBot
             var move = moves[i];
 
             board.MakeMove(move);
-            var eval = 0;
+            int eval;
             if (i == 0 || quiesceSearch)
                 eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
             else
