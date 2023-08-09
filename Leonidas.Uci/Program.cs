@@ -4,7 +4,7 @@ namespace Leonidas.Uci
 {
     internal class Program
     {
-        static int GetTokenCount()
+        static (int totalCount, int debugCount) GetTokenCount()
         {
             var path = Path.Combine(Directory.GetCurrentDirectory(), "src", "My Bot", "MyBot.cs");
             var txt = File.ReadAllText(path);
@@ -23,8 +23,9 @@ namespace Leonidas.Uci
             }
 
             Console.WriteLine("Sebastian Lague's Chess Challenge UCI interface by Gediminas Masaitis");
-            var totalTokens = GetTokenCount();
+            var (totalTokens, debugTokens) = GetTokenCount();
             Console.WriteLine($"Current token count: {totalTokens}");
+            Console.WriteLine($"Debug token count: {debugTokens}");
             Console.WriteLine();
 
             var uci = new Uci(player);
