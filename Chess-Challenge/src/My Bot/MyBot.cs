@@ -164,13 +164,25 @@ public class MyBot : IChessBot
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
 
-        foreach (var move in moves)
+        for (var i = 0; i < moves.Length; i++)
         {
-            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) return 30000;
+            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+                return 30000;
+
+            var move = moves[i];
 
             board.MakeMove(move);
-            var eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
+            var eval = 0;
+            if (i == 0 || quiesceSearch)
+                eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
+            else
+            {
+                eval = -Search(board, timer, depth - 1, ply + 1, -alpha - 1, -alpha);
+                if (alpha < eval && eval < beta) eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
+            }
+
             board.UndoMove(move);
+
             if (eval > bestScore)
             {
                 bestScore = eval;
@@ -180,31 +192,33 @@ public class MyBot : IChessBot
 
                 // update alpha and check for beta cutoff
                 alpha = Math.Max(alpha, eval);
-                if (alpha >= beta) break;
+                if (alpha >= beta)
+                {
+                    if (!quiesceSearch && !move.IsCapture)
+                    {
+                        if (bestMove != _killerMoves[0, ply])
+                            // shift moves down
+                            (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
+                    }
+
+                    break;
+                }
             }
         }
 
-        // check for terminal position
-        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
+        // check for terminal position            
+        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -TranspositionTableSortValue + ply : 0;
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
         var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
-        // assign killer move in the case of a beta cutoff
-        if (bestScore >= beta && !bestMove.IsCapture)
-        {
-            if (bestMove != _killerMoves[0, ply])
-                // shift moves down
-                (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
-
-        }
         _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
             bestScore, (sbyte)depth, bound, bestMove);
 
         return bestScore;
     }
 
-    public int Evaluate(Board board)
+    private int Evaluate(Board board)
     {
         int mg = 0, eg = 0, phase = 0;
 
@@ -244,7 +258,8 @@ public class MyBot : IChessBot
             int score = Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
-            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
+            if (CheckThinkTime &&
+                timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
