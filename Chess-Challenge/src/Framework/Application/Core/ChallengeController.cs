@@ -26,6 +26,7 @@ namespace ChessChallenge.Application
             MyBotv3,
             MyBotv4,
             MyBotv5,
+            MyBotv6,
             EvilBot,
             NegamaxBot,
             NegamaxTier2Bot,
@@ -160,7 +161,8 @@ namespace ChessChallenge.Application
             API.Board botBoard = new(board);
             try
             {
-                API.Timer timer = new(PlayerToMove.TimeRemainingMs, PlayerNotOnMove.TimeRemainingMs, GameDurationMilliseconds, IncrementMilliseconds);
+                API.Timer timer = new(PlayerToMove.TimeRemainingMs, PlayerNotOnMove.TimeRemainingMs,
+                    GameDurationMilliseconds, IncrementMilliseconds);
                 API.Move move = PlayerToMove.Bot.Think(botBoard, timer);
                 return new Move(move.RawValue);
             }
@@ -227,6 +229,7 @@ namespace ChessChallenge.Application
                 PlayerType.MyBotv3 => new MyBotv3(),
                 PlayerType.MyBotv4 => new MyBotv4(),
                 PlayerType.MyBotv5 => new MyBotv5(),
+                PlayerType.MyBotv6 => new MyBotv6(),
                 PlayerType.EvilBot => new EvilBot(),
                 PlayerType.NegamaxBot => new NegamaxBot(),
                 PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
@@ -239,7 +242,8 @@ namespace ChessChallenge.Application
         ChessPlayer CreatePlayer(PlayerType type)
         {
             return type != PlayerType.Human
-                ? new ChessPlayer(CreateBot(type) ?? throw new InvalidOperationException(), type, GameDurationMilliseconds)
+                ? new ChessPlayer(CreateBot(type) ?? throw new InvalidOperationException(), type,
+                    GameDurationMilliseconds)
                 : new ChessPlayer(new HumanPlayer(boardUI), type);
         }
 
