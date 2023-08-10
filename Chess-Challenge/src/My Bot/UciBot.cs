@@ -34,7 +34,7 @@ namespace ChessChallenge.UCI
                 }
                 else
                 {
-                    board.LoadPosition(String.Join(" ", args.AsSpan(1, args.Length - 1).ToArray()));
+                    board.LoadPosition(String.Join(" ", args.AsSpan(2, args.Length - 2).ToArray()));
                 }
             }
             else
@@ -45,7 +45,7 @@ namespace ChessChallenge.UCI
                 }
                 else
                 {
-                    board.LoadPosition(String.Join(" ", args.AsSpan(1, idx - 1).ToArray()));
+                    board.LoadPosition(String.Join(" ", args.AsSpan(2, idx - 2).ToArray()));
                 }
 
                 for (int i = idx + 1; i < args.Length; i++)
