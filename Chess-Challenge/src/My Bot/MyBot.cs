@@ -52,11 +52,11 @@ public class MyBot : IChessBot
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
 #if DEBUG
-    private const int MaxDepth = 3;
-    private const bool CheckThinkTime = false;
+    private const int MaxDepth = 15;
+    private const int TimeCheckFactor = 30;
 #else
     private const int MaxDepth = 50;
-    private const bool CheckThinkTime = true;
+    private const int TimeCheckFactor = 30;
 #endif
 
     private Move _bestMoveRoot = Move.NullMove;
@@ -77,7 +77,6 @@ public class MyBot : IChessBot
 
     private const ulong TranspositionTableEntries = (1 << 20);
     private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
-    private const int TimeCheckFactor = 30;
 
     // maximum think time for each move 
     // private const int MaxThinkTime = 10 * 1000;
@@ -123,27 +122,20 @@ public class MyBot : IChessBot
         if (zobristHash == board.ZobristKey && notRoot &&
             ttDepth >= depth)
         {
-            switch (flag)
-            {
-                case Exact:
-                    return score;
-                case LowerBound:
-                    alpha = Math.Max(alpha, score);
-                    break;
-                default:
-                    beta = Math.Min(beta, score);
-                    break;
-            }
+            if (flag == Exact)
+                return score;
+            if (flag == LowerBound)
+                alpha = Math.Max(alpha, score);
+            else
+                beta = Math.Min(beta, score);
 
             if (alpha >= beta)
                 return score;
         }
 
-        var evaluation = Evaluate(board);
-
         if (quiesceSearch)
         {
-            bestScore = evaluation;
+            bestScore = Evaluate(board);
             alpha = Math.Max(alpha, bestScore);
             if (alpha >= beta) return bestScore;
         }
@@ -169,7 +161,7 @@ public class MyBot : IChessBot
 
         for (var i = 0; i < moves.Length; i++)
         {
-            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
                 return 30000;
 
             var move = moves[i];
@@ -278,8 +270,7 @@ public class MyBot : IChessBot
             Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
-            if (CheckThinkTime &&
-                timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
