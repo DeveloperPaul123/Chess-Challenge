@@ -1,6 +1,6 @@
 ﻿using ChessChallenge.API;
 
-namespace Chess.Engine.Evaluation;
+namespace Leonidas.Engine.Evaluation;
 
 internal class SimpleEvaluation : IBoardEvaluator
 {

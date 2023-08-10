@@ -10,7 +10,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.editorconfig = .editorconfig
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chess.Engine", "Chess.Engine\Chess.Engine.csproj", "{FF96C3C3-3357-4E55-96AF-B39283D9E547}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Leonidas.Engine", "Leonidas.Engine\Leonidas.Engine.csproj", "{FF96C3C3-3357-4E55-96AF-B39283D9E547}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Leonidas.Uci", "Leonidas.Uci\Leonidas.Uci.csproj", "{712B8749-6C01-43DC-868E-39B4E2F37074}"
 EndProject
