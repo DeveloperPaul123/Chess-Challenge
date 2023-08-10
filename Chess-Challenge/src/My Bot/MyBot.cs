@@ -104,23 +104,26 @@ public class MyBot : IChessBot
             _moveHistory[ply, move.StartSquare.Index, move.TargetSquare.Index];
     }
 
-    /// Negascout search
-    private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta)
+    // depth reduction factor used for null move pruning
+    private const int DepthReductionFactor = 2;
+
+    private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta, bool allowNullMove = true)
     {
-        var quiesceSearch = depth <= 0;
-        var notRoot = ply > 0;
+        // declare these all at once to save tokens
+        bool quiesceSearch = depth <= 0,
+            notRoot = ply > 0,
+            isInCheck = board.IsInCheck(),
+            isPrincipleVariation = beta - alpha > 1;
+
         var bestScore = int.MinValue + 1;
 
         if (notRoot && board.IsRepeatedPosition()) return 0;
 
-        var transposition = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (transposition.ZobristHash == board.ZobristKey && notRoot &&
-            transposition.Depth >= depth)
+        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
+        if (zobristHash == board.ZobristKey && notRoot &&
+            ttDepth >= depth)
         {
-            // Cache this value to save tokens by not referencing using the . operator
-            var score = transposition.Evaluation;
-
-            switch (transposition.Flag)
+            switch (flag)
             {
                 case Exact:
                     return score;
@@ -143,6 +146,19 @@ public class MyBot : IChessBot
             bestScore = evaluation;
             alpha = Math.Max(alpha, bestScore);
             if (alpha >= beta) return bestScore;
+        }
+
+        // null move pruning
+        if (!isInCheck && !isPrincipleVariation && allowNullMove)
+        {
+            board.TrySkipTurn();
+            var nullMoveScore = -Search(board, timer, depth - 1 - DepthReductionFactor, ply + 1, -beta, -beta + 1,
+                false);
+            board.UndoSkipTurn();
+
+            // beta cutoff
+            if (nullMoveScore >= beta)
+                return beta;
         }
 
         var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
@@ -198,6 +214,7 @@ public class MyBot : IChessBot
                             _killerMoves[0, ply] = bestMove;
                         }
                     }
+
                     break;
                 }
             }
