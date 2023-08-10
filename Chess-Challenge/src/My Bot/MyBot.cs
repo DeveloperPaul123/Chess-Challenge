@@ -104,7 +104,7 @@ public class MyBot : IChessBot
     }
 
     // depth reduction factor used for null move pruning
-    private const int DepthReductionFactor = 2;
+    private const int DepthReductionFactor = 3;
 
     private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta, bool allowNullMove = true)
     {
