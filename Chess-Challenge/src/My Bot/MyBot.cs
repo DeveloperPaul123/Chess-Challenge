@@ -11,7 +11,7 @@ public class MyBot : IChessBot
     // Pawn, Knight, Bishop, Rook, Queen, King 
     private readonly short[] PieceValues =
     {
-        82, 337, 365, 477, 1025, 9468, // Middlegame
+        82, 337, 365, 477, 1025, 10000, // Middlegame
         94, 281, 297, 512, 936, 10000 // Endgame
     };
 
@@ -87,7 +87,7 @@ public class MyBot : IChessBot
         _unpackedPestoTables = new int[64][];
         _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
         {
-            int pieceType = 0;
+            var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
                     .Select((byte square) => (int)((sbyte)square * 1.461) + PieceValues[pieceType++]))
@@ -95,42 +95,54 @@ public class MyBot : IChessBot
         }).ToArray();
     }
 
-    // TODO: Remove to save tokens
-    private const int MvvLvaFactor = 1000;
-    private const int TranspositionTableSortValue = 1000000;
-    private const int KillerValue = 1000;
-
     private int GetMovePriority(Move move, Board board, int ply)
     {
         return
-            _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? TranspositionTableSortValue :
-            move.IsCapture ? MvvLvaFactor * (int)move.CapturePieceType - (int)move.MovePieceType :
-            _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? KillerValue :
+            _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
+            move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
+            _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
             _moveHistory[ply, move.StartSquare.Index, move.TargetSquare.Index];
     }
 
-    /// Negamax search with alpha-beta pruning and transposition table
+    /// Negascout search
     private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta)
     {
         var quiesceSearch = depth <= 0;
         var notRoot = ply > 0;
         var bestScore = int.MinValue + 1;
+
         if (notRoot && board.IsRepeatedPosition()) return 0;
 
         var transposition = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (notRoot && transposition.ZobristHash == board.ZobristKey && transposition.Depth >= depth && (
-                transposition.Flag == Exact
-                || transposition.Flag == LowerBound && transposition.Evaluation >= beta
-                || transposition.Evaluation == UpperBound && transposition.Evaluation <= alpha
-            )) return transposition.Evaluation;
+        if (transposition.ZobristHash == board.ZobristKey && notRoot &&
+            transposition.Depth >= depth)
+        {
+            // Cache this value to save tokens by not referencing using the . operator
+            var score = transposition.Evaluation;
+
+            switch (transposition.Flag)
+            {
+                case Exact:
+                    return score;
+                case LowerBound:
+                    alpha = Math.Max(alpha, score);
+                    break;
+                default:
+                    beta = Math.Min(beta, score);
+                    break;
+            }
+
+            if (alpha >= beta)
+                return score;
+        }
 
         var evaluation = Evaluate(board);
 
         if (quiesceSearch)
         {
             bestScore = evaluation;
-            if (bestScore >= beta) return bestScore;
             alpha = Math.Max(alpha, bestScore);
+            if (alpha >= beta) return bestScore;
         }
 
         var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
@@ -149,11 +161,14 @@ public class MyBot : IChessBot
             board.MakeMove(move);
             int eval;
             if (i == 0 || quiesceSearch)
+                // first child, search with normal window
                 eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
             else
             {
-                eval = -Search(board, timer, depth - 1, ply + 1, -alpha - 1, -alpha);
-                if (alpha < eval && eval < beta) eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
+                // null window search
+                eval = -Search(board, timer, depth - 1, ply + 1, -(alpha + 1), -alpha);
+                // if it failed high, do a full re-search
+                if (alpha < eval && eval < beta) eval = -Search(board, timer, depth - 1, ply + 1, -beta, -eval);
             }
 
             board.UndoMove(move);
@@ -174,20 +189,22 @@ public class MyBot : IChessBot
                 alpha = Math.Max(alpha, eval);
                 if (alpha >= beta)
                 {
-                    if (!quiesceSearch && !move.IsCapture)
+                    if (!quiesceSearch && !bestMove.IsCapture)
                     {
                         if (bestMove != _killerMoves[0, ply])
+                        {
                             // shift moves down
-                            (_killerMoves[0, ply], _killerMoves[1, ply]) = (bestMove, _killerMoves[0, ply]);
+                            _killerMoves[1, ply] = _killerMoves[0, ply];
+                            _killerMoves[0, ply] = bestMove;
+                        }
                     }
-
                     break;
                 }
             }
         }
 
         // check for terminal position            
-        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -TranspositionTableSortValue + ply : 0;
+        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -100000 + ply : 0;
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
@@ -241,7 +258,7 @@ public class MyBot : IChessBot
              depth <= MaxDepth;
              depth++)
         {
-            int score = Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
+            Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
             if (CheckThinkTime &&
