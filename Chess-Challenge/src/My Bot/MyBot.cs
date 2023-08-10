@@ -139,9 +139,9 @@ public class MyBot : IChessBot
             alpha = Math.Max(alpha, bestScore);
             if (alpha >= beta) return bestScore;
         }
-
-        // null move pruning
-        if (!isInCheck && !isPrincipleVariation && allowNullMove)
+        // no pruning in q-search
+        // null move pruning only when allowed and we're not in check
+        else if (!isInCheck && !isPrincipleVariation && allowNullMove)
         {
             board.TrySkipTurn();
             var nullMoveScore = -Search(board, timer, depth - 1 - DepthReductionFactor, ply + 1, -beta, -beta + 1,
