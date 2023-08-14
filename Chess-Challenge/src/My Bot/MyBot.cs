@@ -9,7 +9,7 @@ public class MyBot : IChessBot
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
 
     // Pawn, Knight, Bishop, Rook, Queen, King 
-    private readonly short[] PieceValues =
+    private readonly short[] _pieceValues =
     {
         82, 337, 365, 477, 1025, 10000, // Middlegame
         94, 281, 297, 512, 936, 10000 // Endgame
@@ -17,7 +17,7 @@ public class MyBot : IChessBot
 
     // Big table packed with data from premade piece square tables
     // Unpack using PackedEvaluationTables[set, rank] = file
-    private readonly decimal[] PackedPestoTables =
+    private readonly decimal[] _packedPestoTables =
     {
         63746705523041458768562654720m, 71818693703096985528394040064m, 75532537544690978830456252672m,
         75536154932036771593352371712m, 76774085526445040292133284352m, 3110608541636285947269332480m,
@@ -77,12 +77,12 @@ public class MyBot : IChessBot
     public MyBot()
     {
         _unpackedPestoTables = new int[64][];
-        _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
+        _unpackedPestoTables = _packedPestoTables.Select(packedTable =>
         {
             var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
-                    .Select((byte square) => (int)((sbyte)square * 1.461) + PieceValues[pieceType++]))
+                    .Select((byte square) => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
                 .ToArray();
         }).ToArray();
     }
