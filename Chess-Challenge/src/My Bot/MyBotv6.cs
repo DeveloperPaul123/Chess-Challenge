@@ -52,7 +52,6 @@ public class MyBotv6 : IChessBot
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
     private Move _bestMoveRoot = Move.NullMove;
-
     private readonly Move[,] _killerMoves = new Move[2, 50];
 
     // side, move from, move to
@@ -66,8 +65,7 @@ public class MyBotv6 : IChessBot
         sbyte Flag,
         Move Move);
 
-    private const ulong TranspositionTableEntries = (1 << 20);
-    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
+    private readonly Transposition[] _transpositionTable = new Transposition[1_048_576UL];
 
     // cache these to save tokens
     private Board _board;
@@ -82,7 +80,7 @@ public class MyBotv6 : IChessBot
             var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
-                    .Select((byte square) => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
+                    .Select(square => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
                 .ToArray();
         }).ToArray();
     }
@@ -99,19 +97,16 @@ public class MyBotv6 : IChessBot
 
         if (notRoot && _board.IsRepeatedPosition()) return 0;
 
-        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % TranspositionTableEntries];
+        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % 1_048_576UL];
         if (zobristHash == _board.ZobristKey && notRoot &&
             ttDepth >= depth)
         {
-            if (flag == Exact)
-                return score;
-
             if (flag == LowerBound)
                 alpha = Math.Max(alpha, score);
-            else
+            else if (flag == UpperBound)
                 beta = Math.Min(beta, score);
 
-            if (alpha >= beta)
+            if (alpha >= beta || flag == Exact)
                 return score;
         }
 
@@ -139,31 +134,29 @@ public class MyBotv6 : IChessBot
 
         var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
             move =>
-                _transpositionTable[_board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
+                _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? 1000000 :
                 move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
                 _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
                 _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index]
-            ).ToArray();
+        ).ToArray();
 
         var bestMove = Move.NullMove;
-        var startingAlpha = alpha;
+        int startingAlpha = alpha,
+            movesSearched = 0;
+        int NextSearch(int newAlpha, int newBeta) => -Search(depth - 1, ply + 1, newAlpha, newBeta);
 
-        for (var i = 0; i < moves.Length; i++)
+        foreach (var move in moves)
         {
-            var move = moves[i];
-
             _board.MakeMove(move);
-            int eval;
-            if (i == 0 || quiesceSearch)
-                // first child, search with normal window
-                eval = -Search(depth - 1, ply + 1, -beta, -alpha);
-            else
-            {
-                // null window search
-                eval = -Search(depth - 1, ply + 1, -(alpha + 1), -alpha);
-                // if it failed high, do a full re-search
-                if (alpha < eval && eval < beta) eval = -Search(depth - 1, ply + 1, -beta, -eval);
-            }
+
+            // first child searches with normal window, otherwise do a null window search
+            var eval = (movesSearched++ == 0 || quiesceSearch)
+                ? NextSearch(-beta, -alpha)
+                : NextSearch(-(alpha + 1), -alpha);
+            // check result to see if we need to do a full re-search
+            // if we fail high, we re-search
+            if (alpha < eval && eval < beta)
+                eval = NextSearch(-beta, -eval);
 
             _board.UndoMove(move);
 
@@ -199,7 +192,6 @@ public class MyBotv6 : IChessBot
             // check if time expired
             if (_timer.MillisecondsElapsedThisTurn >= _maxThinkTime)
                 return 30000;
-
         }
 
         // check for terminal position            
@@ -207,9 +199,14 @@ public class MyBotv6 : IChessBot
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
-        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
-        _transpositionTable[_board.ZobristKey % TranspositionTableEntries] = new Transposition(_board.ZobristKey,
-            bestScore, (sbyte)depth, bound, bestMove);
+        _transpositionTable[_board.ZobristKey % 1_048_576UL] = new
+        (
+            _board.ZobristKey,
+            bestScore,
+            (sbyte)depth,
+            bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound,
+            bestMove
+        );
 
         return bestScore;
     }
@@ -221,13 +218,12 @@ public class MyBotv6 : IChessBot
         for (sbyte b = 0; b <= 1; b++)
         {
             // evaluate white first
-            var isWhite = b == 0;
             for (var piece = PieceType.Pawn; piece <= PieceType.King; piece++)
             {
-                var bitboard = _board.GetPieceBitboard(piece, isWhite);
+                var bitboard = _board.GetPieceBitboard(piece, b == 0);
                 while (bitboard != 0)
                 {
-                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (isWhite ? 56 : 0);
+                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (b == 0 ? 56 : 0);
                     mg += _unpackedPestoTables[sq][(int)piece - 1];
                     // endgame value is in the same array, but offset by 6
                     // instead of doing piece -1 + 6, we can just do piece + 5
