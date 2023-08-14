@@ -52,7 +52,6 @@ public class MyBot : IChessBot
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
     private Move _bestMoveRoot = Move.NullMove;
-
     private readonly Move[,] _killerMoves = new Move[2, 50];
 
     // side, move from, move to
@@ -65,9 +64,8 @@ public class MyBot : IChessBot
         sbyte Depth,
         sbyte Flag,
         Move Move);
-
-    private const ulong TranspositionTableEntries = (1 << 20);
-    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
+    
+    private readonly Transposition[] _transpositionTable = new Transposition[1_048_576UL];
 
     // cache these to save tokens
     private Board _board;
@@ -82,7 +80,7 @@ public class MyBot : IChessBot
             var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
-                    .Select((byte square) => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
+                    .Select(square => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
                 .ToArray();
         }).ToArray();
     }
@@ -99,7 +97,7 @@ public class MyBot : IChessBot
 
         if (notRoot && _board.IsRepeatedPosition()) return 0;
 
-        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % TranspositionTableEntries];
+        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % 1_048_576UL];
         if (zobristHash == _board.ZobristKey && notRoot &&
             ttDepth >= depth)
         {
@@ -136,7 +134,7 @@ public class MyBot : IChessBot
 
         var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
             move =>
-                _transpositionTable[_board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
+                _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? 1000000 :
                 move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
                 _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
                 _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index]
@@ -200,9 +198,14 @@ public class MyBot : IChessBot
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
-        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
-        _transpositionTable[_board.ZobristKey % TranspositionTableEntries] = new(_board.ZobristKey,
-            bestScore, (sbyte)depth, bound, bestMove);
+        _transpositionTable[_board.ZobristKey % 1_048_576UL] = new
+        (
+            _board.ZobristKey,
+            bestScore, 
+            (sbyte)depth, 
+            bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound, 
+            bestMove
+        );
 
         return bestScore;
     }
