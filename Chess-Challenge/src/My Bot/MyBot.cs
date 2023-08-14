@@ -61,11 +61,10 @@ public class MyBot : IChessBot
 
     private Move _bestMoveRoot = Move.NullMove;
 
-    private readonly Move[,] _killerMoves = new Move[MaxKillerMoves, MaxDepth];
-    private const int MaxKillerMoves = 2;
+    private readonly Move[,] _killerMoves = new Move[2, MaxDepth];
 
     // side, move from, move to
-    private readonly int[,,] _moveHistory = new int[MaxDepth, 64, 64];
+    private readonly int[,,] _moveHistory = new int[2, 64, 64];
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
     private record struct Transposition(
@@ -100,7 +99,7 @@ public class MyBot : IChessBot
             _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
             move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
             _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
-            _moveHistory[ply, move.StartSquare.Index, move.TargetSquare.Index];
+            _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
     }
 
     // depth reduction factor used for null move pruning
@@ -183,11 +182,6 @@ public class MyBot : IChessBot
 
             if (eval > bestScore)
             {
-                if (!move.IsCapture && !quiesceSearch)
-                    // add it to history
-                    _moveHistory[ply, move.StartSquare.Index,
-                        move.TargetSquare.Index] += depth * depth;
-
                 bestScore = eval;
                 bestMove = move;
                 // update move at root
@@ -199,6 +193,10 @@ public class MyBot : IChessBot
                 {
                     if (!quiesceSearch && !bestMove.IsCapture)
                     {
+                        // add it to history
+                        _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index,
+                            move.TargetSquare.Index] += depth * depth;
+
                         if (bestMove != _killerMoves[0, ply])
                         {
                             // shift moves down
