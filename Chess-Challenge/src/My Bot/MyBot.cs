@@ -69,9 +69,6 @@ public class MyBot : IChessBot
     private const ulong TranspositionTableEntries = (1 << 20);
     private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
 
-    // maximum think time for each move 
-    // private const int MaxThinkTime = 10 * 1000;
-
     public MyBot()
     {
         _unpackedPestoTables = new int[64][];
