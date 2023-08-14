@@ -93,15 +93,6 @@ public class MyBot : IChessBot
         }).ToArray();
     }
 
-    private int GetMovePriority(Move move, Board board, int ply)
-    {
-        return
-            _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
-            move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
-            _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
-            _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
-    }
-
     // depth reduction factor used for null move pruning
     private const int DepthReductionFactor = 3;
 
@@ -153,7 +144,12 @@ public class MyBot : IChessBot
         }
 
         var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
-            move => GetMovePriority(move, board, ply)).ToArray();
+            move =>
+                _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
+                move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
+                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
+                _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index]
+            ).ToArray();
 
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
