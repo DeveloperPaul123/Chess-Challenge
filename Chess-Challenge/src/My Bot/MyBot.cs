@@ -160,9 +160,6 @@ public class MyBot : IChessBot
 
         for (var i = 0; i < moves.Length; i++)
         {
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
-                return 30000;
-
             var move = moves[i];
 
             board.MakeMove(move);
@@ -208,6 +205,11 @@ public class MyBot : IChessBot
                     break;
                 }
             }
+
+            // check if time expired
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+                return 30000;
+
         }
 
         // check for terminal position            
