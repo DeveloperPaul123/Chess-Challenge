@@ -85,9 +85,6 @@ public class MyBot : IChessBot
         }).ToArray();
     }
 
-    // depth reduction factor used for null move pruning
-    private const int DepthReductionFactor = 3;
-
     private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta, bool allowNullMove = true)
     {
         // declare these all at once to save tokens
@@ -96,7 +93,7 @@ public class MyBot : IChessBot
             isInCheck = board.IsInCheck(),
             isPrincipleVariation = beta - alpha > 1;
 
-        var bestScore = int.MinValue + 1;
+        var bestScore = -9999999;
 
         if (notRoot && board.IsRepeatedPosition()) return 0;
 
@@ -106,6 +103,7 @@ public class MyBot : IChessBot
         {
             if (flag == Exact)
                 return score;
+
             if (flag == LowerBound)
                 alpha = Math.Max(alpha, score);
             else
@@ -126,7 +124,9 @@ public class MyBot : IChessBot
         else if (!isInCheck && !isPrincipleVariation && allowNullMove)
         {
             board.TrySkipTurn();
-            var nullMoveScore = -Search(board, timer, depth - 1 - DepthReductionFactor, ply + 1, -beta, -beta + 1,
+            // depth reduction factor used for null move pruning, commented out for tokens
+            // private const int DepthReductionFactor = 3;
+            var nullMoveScore = -Search(board, timer, depth - 1 - 3, ply + 1, -beta, -beta + 1,
                 false);
             board.UndoSkipTurn();
 
@@ -255,7 +255,7 @@ public class MyBot : IChessBot
              depth <= 50;
              depth++)
         {
-            Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
+            Search(board, timer, depth, 0, -9999999, 9999999);
 
             // check if we're out of time
             if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) break;
