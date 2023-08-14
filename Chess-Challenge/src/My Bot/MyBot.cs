@@ -95,7 +95,7 @@ public class MyBot : IChessBot
             isInCheck = _board.IsInCheck(),
             isPrincipleVariation = beta - alpha > 1;
 
-        var bestScore = -9999999 ;
+        var bestScore = -9999999;
 
         if (notRoot && _board.IsRepeatedPosition()) return 0;
 
@@ -147,23 +147,21 @@ public class MyBot : IChessBot
 
         var bestMove = Move.NullMove;
         var startingAlpha = alpha;
+        int NextSearch(int newAlpha, int newBeta) => -Search(depth - 1, ply + 1, newAlpha, newBeta);
 
         for (var i = 0; i < moves.Length; i++)
         {
             var move = moves[i];
 
             _board.MakeMove(move);
-            int eval;
-            if (i == 0 || quiesceSearch)
-                // first child, search with normal window
-                eval = -Search(depth - 1, ply + 1, -beta, -alpha);
-            else
-            {
-                // null window search
-                eval = -Search(depth - 1, ply + 1, -(alpha + 1), -alpha);
-                // if it failed high, do a full re-search
-                if (alpha < eval && eval < beta) eval = -Search(depth - 1, ply + 1, -beta, -eval);
-            }
+
+            // first child searches with normal window, otherwise do a null window search
+            var eval = (i == 0 || quiesceSearch) ? NextSearch(-beta, -alpha) :
+                NextSearch(-(alpha + 1), -alpha);
+            // check result to see if we need to do a full re-search
+            // if we fail high, we re-search
+            if(alpha < eval && eval < beta)
+                eval = NextSearch(-beta, -eval);
 
             _board.UndoMove(move);
 
