@@ -9,7 +9,7 @@ public class MyBot : IChessBot
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
 
     // Pawn, Knight, Bishop, Rook, Queen, King 
-    private readonly short[] PieceValues =
+    private readonly short[] _pieceValues =
     {
         82, 337, 365, 477, 1025, 10000, // Middlegame
         94, 281, 297, 512, 936, 10000 // Endgame
@@ -17,7 +17,7 @@ public class MyBot : IChessBot
 
     // Big table packed with data from premade piece square tables
     // Unpack using PackedEvaluationTables[set, rank] = file
-    private readonly decimal[] PackedPestoTables =
+    private readonly decimal[] _packedPestoTables =
     {
         63746705523041458768562654720m, 71818693703096985528394040064m, 75532537544690978830456252672m,
         75536154932036771593352371712m, 76774085526445040292133284352m, 3110608541636285947269332480m,
@@ -51,17 +51,8 @@ public class MyBot : IChessBot
     // match types for transposition table
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
-#if DEBUG
-    private const int MaxDepth = 15;
-    private const int TimeCheckFactor = 30;
-#else
-    private const int MaxDepth = 50;
-    private const int TimeCheckFactor = 30;
-#endif
-
     private Move _bestMoveRoot = Move.NullMove;
-
-    private readonly Move[,] _killerMoves = new Move[2, MaxDepth];
+    private readonly Move[,] _killerMoves = new Move[2, 50];
 
     // side, move from, move to
     private readonly int[,,] _moveHistory = new int[2, 64, 64];
@@ -74,67 +65,54 @@ public class MyBot : IChessBot
         sbyte Flag,
         Move Move);
 
-    private const ulong TranspositionTableEntries = (1 << 20);
-    private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
+    private readonly Transposition[] _transpositionTable = new Transposition[1_048_576UL];
 
-    // maximum think time for each move 
-    // private const int MaxThinkTime = 10 * 1000;
+    // cache these to save tokens
+    private Board _board;
+    private Timer _timer;
+    private int _maxThinkTime;
 
     public MyBot()
     {
         _unpackedPestoTables = new int[64][];
-        _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
+        _unpackedPestoTables = _packedPestoTables.Select(packedTable =>
         {
             var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
-                    .Select((byte square) => (int)((sbyte)square * 1.461) + PieceValues[pieceType++]))
+                    .Select(square => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
                 .ToArray();
         }).ToArray();
     }
 
-    private int GetMovePriority(Move move, Board board, int ply)
-    {
-        return
-            _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
-            move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
-            _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
-            _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
-    }
-
-    // depth reduction factor used for null move pruning
-    private const int DepthReductionFactor = 3;
-
-    private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta, bool allowNullMove = true)
+    private int Search(int depth, int ply, int alpha, int beta, bool allowNullMove = true)
     {
         // declare these all at once to save tokens
         bool quiesceSearch = depth <= 0,
             notRoot = ply > 0,
-            isInCheck = board.IsInCheck(),
+            isInCheck = _board.IsInCheck(),
             isPrincipleVariation = beta - alpha > 1;
 
-        var bestScore = int.MinValue + 1;
+        var bestScore = -9999999;
 
-        if (notRoot && board.IsRepeatedPosition()) return 0;
+        if (notRoot && _board.IsRepeatedPosition()) return 0;
 
-        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[board.ZobristKey % TranspositionTableEntries];
-        if (zobristHash == board.ZobristKey && notRoot &&
+        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % 1_048_576UL];
+        if (zobristHash == _board.ZobristKey && notRoot &&
             ttDepth >= depth)
         {
-            if (flag == Exact)
-                return score;
             if (flag == LowerBound)
                 alpha = Math.Max(alpha, score);
-            else
+            else if (flag == UpperBound)
                 beta = Math.Min(beta, score);
 
-            if (alpha >= beta)
+            if (alpha >= beta || flag == Exact)
                 return score;
         }
 
         if (quiesceSearch)
         {
-            bestScore = Evaluate(board);
+            bestScore = Evaluate();
             alpha = Math.Max(alpha, bestScore);
             if (alpha >= beta) return bestScore;
         }
@@ -142,40 +120,45 @@ public class MyBot : IChessBot
         // null move pruning only when allowed and we're not in check
         else if (!isInCheck && !isPrincipleVariation && allowNullMove)
         {
-            board.TrySkipTurn();
-            var nullMoveScore = -Search(board, timer, depth - 1 - DepthReductionFactor, ply + 1, -beta, -beta + 1,
+            _board.TrySkipTurn();
+            // depth reduction factor used for null move pruning, commented out for tokens
+            // private const int DepthReductionFactor = 3;
+            var nullMoveScore = -Search(depth - 1 - 3, ply + 1, -beta, -beta + 1,
                 false);
-            board.UndoSkipTurn();
+            _board.UndoSkipTurn();
 
             // beta cutoff
             if (nullMoveScore >= beta)
                 return beta;
         }
 
-        var moves = board.GetLegalMoves(quiesceSearch).OrderByDescending(
-            move => GetMovePriority(move, board, ply)).ToArray();
+        var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
+            move =>
+                _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? 1000000 :
+                move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
+                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
+                _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index]
+        ).ToArray();
 
         var bestMove = Move.NullMove;
-        var startingAlpha = alpha;
+        int startingAlpha = alpha,
+            movesSearched = 0;
+        int NextSearch(int newAlpha, int newBeta) => -Search(depth - 1, ply + 1, newAlpha, newBeta);
 
-        for (var i = 0; i < moves.Length; i++)
+        foreach (var move in moves)
         {
-            var move = moves[i];
+            _board.MakeMove(move);
 
-            board.MakeMove(move);
-            int eval;
-            if (i == 0 || quiesceSearch)
-                // first child, search with normal window
-                eval = -Search(board, timer, depth - 1, ply + 1, -beta, -alpha);
-            else
-            {
-                // null window search
-                eval = -Search(board, timer, depth - 1, ply + 1, -(alpha + 1), -alpha);
-                // if it failed high, do a full re-search
-                if (alpha < eval && eval < beta) eval = -Search(board, timer, depth - 1, ply + 1, -beta, -eval);
-            }
+            // first child searches with normal window, otherwise do a null window search
+            var eval = (movesSearched++ == 0 || quiesceSearch)
+                ? NextSearch(-beta, -alpha)
+                : NextSearch(-(alpha + 1), -alpha);
+            // check result to see if we need to do a full re-search
+            // if we fail high, we re-search
+            if (alpha < eval && eval < beta)
+                eval = NextSearch(-beta, -eval);
 
-            board.UndoMove(move);
+            _board.UndoMove(move);
 
             if (eval > bestScore)
             {
@@ -191,7 +174,7 @@ public class MyBot : IChessBot
                     if (!quiesceSearch && !bestMove.IsCapture)
                     {
                         // add it to history
-                        _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index,
+                        _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index,
                             move.TargetSquare.Index] += depth * depth;
 
                         if (bestMove != _killerMoves[0, ply])
@@ -207,37 +190,40 @@ public class MyBot : IChessBot
             }
 
             // check if time expired
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+            if (_timer.MillisecondsElapsedThisTurn >= _maxThinkTime)
                 return 30000;
-
         }
 
         // check for terminal position            
-        if (!quiesceSearch && moves.Length == 0) return board.IsInCheck() ? -100000 + ply : 0;
+        if (!quiesceSearch && moves.Length == 0) return _board.IsInCheck() ? -100000 + ply : 0;
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
-        var bound = bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound;
-        _transpositionTable[board.ZobristKey % TranspositionTableEntries] = new Transposition(board.ZobristKey,
-            bestScore, (sbyte)depth, bound, bestMove);
+        _transpositionTable[_board.ZobristKey % 1_048_576UL] = new
+        (
+            _board.ZobristKey,
+            bestScore,
+            (sbyte)depth,
+            bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound,
+            bestMove
+        );
 
         return bestScore;
     }
 
-    private int Evaluate(Board board)
+    private int Evaluate()
     {
         int mg = 0, eg = 0, phase = 0;
 
         for (sbyte b = 0; b <= 1; b++)
         {
             // evaluate white first
-            var isWhite = b == 0;
             for (var piece = PieceType.Pawn; piece <= PieceType.King; piece++)
             {
-                var bitboard = board.GetPieceBitboard(piece, isWhite);
+                var bitboard = _board.GetPieceBitboard(piece, b == 0);
                 while (bitboard != 0)
                 {
-                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (isWhite ? 56 : 0);
+                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (b == 0 ? 56 : 0);
                     mg += _unpackedPestoTables[sq][(int)piece - 1];
                     // endgame value is in the same array, but offset by 6
                     // instead of doing piece -1 + 6, we can just do piece + 5
@@ -250,11 +236,15 @@ public class MyBot : IChessBot
             eg = -eg;
         }
 
-        return (mg * phase + eg * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
+        return (mg * phase + eg * (24 - phase)) / 24 * (_board.IsWhiteToMove ? 1 : -1);
     }
 
     public Move Think(Board board, Timer timer)
     {
+        _board = board;
+        _timer = timer;
+        _maxThinkTime = timer.MillisecondsRemaining / 30;
+
         _bestMoveRoot = Move.NullMove;
 
         // clear killer moves
@@ -264,13 +254,13 @@ public class MyBot : IChessBot
 
         // https://www.chessprogramming.org/Iterative_Deepening
         for (sbyte depth = 1;
-             depth <= MaxDepth;
+             depth <= 50;
              depth++)
         {
-            Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
+            Search(depth, 0, -9999999, 9999999);
 
             // check if we're out of time
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
+            if (timer.MillisecondsElapsedThisTurn >= _maxThinkTime) break;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
