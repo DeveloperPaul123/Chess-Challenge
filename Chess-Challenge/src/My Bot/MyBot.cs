@@ -51,17 +51,9 @@ public class MyBot : IChessBot
     // match types for transposition table
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
-#if DEBUG
-    private const int MaxDepth = 15;
-    private const int TimeCheckFactor = 30;
-#else
-    private const int MaxDepth = 50;
-    private const int TimeCheckFactor = 30;
-#endif
-
     private Move _bestMoveRoot = Move.NullMove;
 
-    private readonly Move[,] _killerMoves = new Move[2, MaxDepth];
+    private readonly Move[,] _killerMoves = new Move[2, 50];
 
     // side, move from, move to
     private readonly int[,,] _moveHistory = new int[2, 64, 64];
@@ -203,7 +195,7 @@ public class MyBot : IChessBot
             }
 
             // check if time expired
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30)
                 return 30000;
 
         }
@@ -260,13 +252,13 @@ public class MyBot : IChessBot
 
         // https://www.chessprogramming.org/Iterative_Deepening
         for (sbyte depth = 1;
-             depth <= MaxDepth;
+             depth <= 50;
              depth++)
         {
             Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) break;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
