@@ -2,9 +2,6 @@
 using System.Linq;
 using ChessChallenge.API;
 
-/// <summary>
-/// V6 of the bot. This one features a PVS/Negascout search with null move pruning
-/// </summary>
 public class MyBotv6 : IChessBot
 {
     // PeSTO evaluation
@@ -12,7 +9,7 @@ public class MyBotv6 : IChessBot
     private readonly int[] _piecePhase = { 0, 1, 1, 2, 4, 0 };
 
     // Pawn, Knight, Bishop, Rook, Queen, King 
-    private readonly short[] PieceValues =
+    private readonly short[] _pieceValues =
     {
         82, 337, 365, 477, 1025, 10000, // Middlegame
         94, 281, 297, 512, 936, 10000 // Endgame
@@ -20,7 +17,7 @@ public class MyBotv6 : IChessBot
 
     // Big table packed with data from premade piece square tables
     // Unpack using PackedEvaluationTables[set, rank] = file
-    private readonly decimal[] PackedPestoTables =
+    private readonly decimal[] _packedPestoTables =
     {
         63746705523041458768562654720m, 71818693703096985528394040064m, 75532537544690978830456252672m,
         75536154932036771593352371712m, 76774085526445040292133284352m, 3110608541636285947269332480m,
@@ -55,20 +52,19 @@ public class MyBotv6 : IChessBot
     private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
 #if DEBUG
-    private const int MaxDepth = 3;
-    private const bool CheckThinkTime = false;
+    private const int MaxDepth = 15;
+    private const int TimeCheckFactor = 30;
 #else
     private const int MaxDepth = 50;
-    private const bool CheckThinkTime = true;
+    private const int TimeCheckFactor = 30;
 #endif
 
     private Move _bestMoveRoot = Move.NullMove;
 
-    private readonly Move[,] _killerMoves = new Move[MaxKillerMoves, MaxDepth];
-    private const int MaxKillerMoves = 2;
+    private readonly Move[,] _killerMoves = new Move[2, MaxDepth];
 
     // side, move from, move to
-    private readonly int[,,] _moveHistory = new int[MaxDepth, 64, 64];
+    private readonly int[,,] _moveHistory = new int[2, 64, 64];
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
     private record struct Transposition(
@@ -80,16 +76,16 @@ public class MyBotv6 : IChessBot
 
     private const ulong TranspositionTableEntries = (1 << 20);
     private readonly Transposition[] _transpositionTable = new Transposition[TranspositionTableEntries];
-    private const int TimeCheckFactor = 30;
+
     public MyBotv6()
     {
         _unpackedPestoTables = new int[64][];
-        _unpackedPestoTables = PackedPestoTables.Select(packedTable =>
+        _unpackedPestoTables = _packedPestoTables.Select(packedTable =>
         {
             var pieceType = 0;
             return decimal.GetBits(packedTable).Take(3)
                 .SelectMany(c => BitConverter.GetBytes(c)
-                    .Select((byte square) => (int)((sbyte)square * 1.461) + PieceValues[pieceType++]))
+                    .Select((byte square) => (int)((sbyte)square * 1.461) + _pieceValues[pieceType++]))
                 .ToArray();
         }).ToArray();
     }
@@ -100,11 +96,11 @@ public class MyBotv6 : IChessBot
             _transpositionTable[board.ZobristKey % TranspositionTableEntries].Move == move ? 1000000 :
             move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
             _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
-            _moveHistory[ply, move.StartSquare.Index, move.TargetSquare.Index];
+            _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
     }
 
     // depth reduction factor used for null move pruning
-    private const int DepthReductionFactor = 2;
+    private const int DepthReductionFactor = 3;
 
     private int Search(Board board, Timer timer, int depth, int ply, int alpha, int beta, bool allowNullMove = true)
     {
@@ -122,33 +118,26 @@ public class MyBotv6 : IChessBot
         if (zobristHash == board.ZobristKey && notRoot &&
             ttDepth >= depth)
         {
-            switch (flag)
-            {
-                case Exact:
-                    return score;
-                case LowerBound:
-                    alpha = Math.Max(alpha, score);
-                    break;
-                default:
-                    beta = Math.Min(beta, score);
-                    break;
-            }
+            if (flag == Exact)
+                return score;
+            if (flag == LowerBound)
+                alpha = Math.Max(alpha, score);
+            else
+                beta = Math.Min(beta, score);
 
             if (alpha >= beta)
                 return score;
         }
 
-        var evaluation = Evaluate(board);
-
         if (quiesceSearch)
         {
-            bestScore = evaluation;
+            bestScore = Evaluate(board);
             alpha = Math.Max(alpha, bestScore);
             if (alpha >= beta) return bestScore;
         }
-
-        // null move pruning
-        if (!isInCheck && !isPrincipleVariation && allowNullMove)
+        // no pruning in q-search
+        // null move pruning only when allowed and we're not in check
+        else if (!isInCheck && !isPrincipleVariation && allowNullMove)
         {
             board.TrySkipTurn();
             var nullMoveScore = -Search(board, timer, depth - 1 - DepthReductionFactor, ply + 1, -beta, -beta + 1,
@@ -168,7 +157,7 @@ public class MyBotv6 : IChessBot
 
         for (var i = 0; i < moves.Length; i++)
         {
-            if (CheckThinkTime && timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor)
                 return 30000;
 
             var move = moves[i];
@@ -190,11 +179,6 @@ public class MyBotv6 : IChessBot
 
             if (eval > bestScore)
             {
-                if (!move.IsCapture && !quiesceSearch)
-                    // add it to history
-                    _moveHistory[ply, move.StartSquare.Index,
-                        move.TargetSquare.Index] += depth * depth;
-
                 bestScore = eval;
                 bestMove = move;
                 // update move at root
@@ -206,6 +190,10 @@ public class MyBotv6 : IChessBot
                 {
                     if (!quiesceSearch && !bestMove.IsCapture)
                     {
+                        // add it to history
+                        _moveHistory[board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index,
+                            move.TargetSquare.Index] += depth * depth;
+
                         if (bestMove != _killerMoves[0, ply])
                         {
                             // shift moves down
@@ -277,8 +265,7 @@ public class MyBotv6 : IChessBot
             Search(board, timer, depth, 0, int.MinValue + 1, int.MaxValue - 1);
 
             // check if we're out of time
-            if (CheckThinkTime &&
-                timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / TimeCheckFactor) break;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
