@@ -64,7 +64,7 @@ public class MyBot : IChessBot
         sbyte Depth,
         sbyte Flag,
         Move Move);
-    
+
     private readonly Transposition[] _transpositionTable = new Transposition[1_048_576UL];
 
     // cache these to save tokens
@@ -141,17 +141,18 @@ public class MyBot : IChessBot
         ).ToArray();
 
         var bestMove = Move.NullMove;
-        var startingAlpha = alpha;
+        int startingAlpha = alpha,
+            movesSearched = 0;
         int NextSearch(int newAlpha, int newBeta) => -Search(depth - 1, ply + 1, newAlpha, newBeta);
 
-        for (var i = 0; i < moves.Length; i++)
+        foreach (var move in moves)
         {
-            var move = moves[i];
-
             _board.MakeMove(move);
 
             // first child searches with normal window, otherwise do a null window search
-            var eval = (i == 0 || quiesceSearch) ? NextSearch(-beta, -alpha) : NextSearch(-(alpha + 1), -alpha);
+            var eval = (movesSearched++ == 0 || quiesceSearch)
+                ? NextSearch(-beta, -alpha)
+                : NextSearch(-(alpha + 1), -alpha);
             // check result to see if we need to do a full re-search
             // if we fail high, we re-search
             if (alpha < eval && eval < beta)
@@ -201,9 +202,9 @@ public class MyBot : IChessBot
         _transpositionTable[_board.ZobristKey % 1_048_576UL] = new
         (
             _board.ZobristKey,
-            bestScore, 
-            (sbyte)depth, 
-            bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound, 
+            bestScore,
+            (sbyte)depth,
+            bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound,
             bestMove
         );
 
