@@ -91,7 +91,8 @@ public class MyBot : IChessBot
         bool quiesceSearch = depth <= 0,
             notRoot = ply > 0,
             isInCheck = _board.IsInCheck(),
-            isPrincipleVariation = beta - alpha > 1;
+            isPrincipleVariation = beta - alpha > 1,
+            canPrune = false;
 
         var bestScore = -9999999;
 
@@ -118,18 +119,28 @@ public class MyBot : IChessBot
         }
         // no pruning in q-search
         // null move pruning only when allowed and we're not in check
-        else if (!isInCheck && !isPrincipleVariation && allowNullMove)
+        else if (!isInCheck && !isPrincipleVariation)
         {
-            _board.TrySkipTurn();
-            // depth reduction factor used for null move pruning, commented out for tokens
-            // private const int DepthReductionFactor = 3;
-            var nullMoveScore = -Search(depth - 1 - 3, ply + 1, -beta, -beta + 1,
-                false);
-            _board.UndoSkipTurn();
+            // var staticEval = Evaluate();
+            // TODO: Reverse futility pruning
+            // if (staticEval - 100 * depth >= beta) return staticEval;
 
-            // beta cutoff
-            if (nullMoveScore >= beta)
-                return beta;
+            if (allowNullMove)
+            {
+                _board.TrySkipTurn();
+                // depth reduction factor used for null move pruning, commented out for tokens
+                // private const int DepthReductionFactor = 3;
+                var nullMoveScore = -Search(depth - 1 - 3, ply + 1, -beta, -beta + 1,
+                    false);
+                _board.UndoSkipTurn();
+
+                // beta cutoff
+                if (nullMoveScore >= beta)
+                    return beta;
+            }
+
+            // check for futility pruning conditions, use depth * pawn value
+            canPrune = depth <= 4 && Evaluate() + _pieceValues[0] * depth <= alpha;
         }
 
         var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
@@ -147,6 +158,9 @@ public class MyBot : IChessBot
 
         foreach (var move in moves)
         {
+            var isTacticalMove = isPrincipleVariation || move.IsCapture || move.IsPromotion || isInCheck;
+            if (!isTacticalMove && canPrune && movesSearched > 0) continue;
+
             _board.MakeMove(move);
 
             // first child searches with normal window, otherwise do a null window search
