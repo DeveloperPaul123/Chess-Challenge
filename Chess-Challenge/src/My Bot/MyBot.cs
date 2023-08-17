@@ -285,7 +285,7 @@ public class MyBot : IChessBot
     {
         _board = board;
         _timer = timer;
-        _maxThinkTime = timer.MillisecondsRemaining / 30;
+        _maxThinkTime = timer.MillisecondsRemaining / 25;
 
         _bestMoveRoot = Move.NullMove;
 
