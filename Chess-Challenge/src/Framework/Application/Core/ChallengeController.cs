@@ -28,11 +28,12 @@ namespace ChessChallenge.Application
             MyBotv5,
             MyBotv6,
             MyBotv61,
+            MyBotv62,
             EvilBot,
             NegamaxBot,
             NegamaxTier2Bot,
             StockFish,
-            StockFish10
+            StockFish10,
         }
 
         // Game state
@@ -232,6 +233,7 @@ namespace ChessChallenge.Application
                 PlayerType.MyBotv5 => new MyBotv5(),
                 PlayerType.MyBotv6 => new MyBotv6(),
                 PlayerType.MyBotv61 => new MyBotv61(),
+                PlayerType.MyBotv62 => new MyBotv62(),
                 PlayerType.EvilBot => new EvilBot(),
                 PlayerType.NegamaxBot => new NegamaxBot(),
                 PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
