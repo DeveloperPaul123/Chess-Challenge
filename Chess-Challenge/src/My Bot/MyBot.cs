@@ -121,7 +121,6 @@ public class MyBot : IChessBot
         // null move pruning only when allowed and we're not in check
         else if (!isInCheck && !isPrincipleVariation)
         {
-            
             // reverse futility pruning
             var staticEval = Evaluate();
             if (staticEval - _pieceValues[0] * depth >= beta) return staticEval;
@@ -144,6 +143,7 @@ public class MyBot : IChessBot
             canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
         }
 
+        // TODO: Use non-alloc version here with Span<>
         var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
             move =>
                 _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? 1000000 :
@@ -155,22 +155,35 @@ public class MyBot : IChessBot
         var bestMove = Move.NullMove;
         int startingAlpha = alpha,
             movesSearched = 0;
-        int NextSearch(int newAlpha, int newBeta) => -Search(depth - 1, ply + 1, newAlpha, newBeta);
+
+        int NextSearch(int newAlpha, int newBeta, int depthReduction = 1) =>
+            -Search(depth - depthReduction, ply + 1, newAlpha, newBeta);
 
         foreach (var move in moves)
         {
-            var isTacticalMove = isPrincipleVariation || move.IsCapture || move.IsPromotion || isInCheck;
-            if (!isTacticalMove && canPrune && movesSearched > 0) continue;
+            // futility pruning
+            var isTacticalMove = move.IsCapture || move.IsPromotion || isInCheck;
+            if (!isTacticalMove && !isPrincipleVariation && canPrune && movesSearched > 0) continue;
 
             _board.MakeMove(move);
 
+            int eval;
             // first child searches with normal window, otherwise do a null window search
-            var eval = (movesSearched++ == 0 || quiesceSearch)
-                ? NextSearch(-beta, -alpha)
-                : NextSearch(-(alpha + 1), -alpha);
+            if (movesSearched++ == 0 || quiesceSearch)
+                eval = NextSearch(-beta, -alpha);
+            // LMR conditions
+            else if (movesSearched >= (isPrincipleVariation ? 7 : 3) && depth >= 3 &&
+                     !isTacticalMove)
+            {
+                // null window search
+                eval = NextSearch(-(alpha + 1), -alpha, 2);
+            }
+            else eval = alpha + 1;
+
             // check result to see if we need to do a full re-search
             // if we fail high, we re-search
-            if (alpha < eval && eval < beta)
+            if (eval > alpha &&
+                alpha < (eval = NextSearch(-(alpha + 1), -alpha)) && eval < beta)
                 eval = NextSearch(-beta, -eval);
 
             _board.UndoMove(move);
