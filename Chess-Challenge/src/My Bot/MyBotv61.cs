@@ -121,9 +121,10 @@ public class MyBotv61 : IChessBot
         // null move pruning only when allowed and we're not in check
         else if (!isInCheck && !isPrincipleVariation)
         {
-            // var staticEval = Evaluate();
-            // TODO: Reverse futility pruning
-            // if (staticEval - 100 * depth >= beta) return staticEval;
+            
+            // reverse futility pruning
+            var staticEval = Evaluate();
+            if (staticEval - _pieceValues[0] * depth >= beta) return staticEval;
 
             if (allowNullMove)
             {
@@ -140,7 +141,7 @@ public class MyBotv61 : IChessBot
             }
 
             // check for futility pruning conditions, use depth * pawn value
-            canPrune = depth <= 4 && Evaluate() + _pieceValues[0] * depth <= alpha;
+            canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
         }
 
         var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
