@@ -143,19 +143,33 @@ public class MyBot : IChessBot
             canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
         }
 
-        // TODO: Use non-alloc version here with Span<>
-        var moves = _board.GetLegalMoves(quiesceSearch).OrderByDescending(
-            move =>
-                _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? 1000000 :
-                move.IsCapture ? 1000 * (int)move.CapturePieceType - (int)move.MovePieceType :
-                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? 900 :
-                _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index]
-        ).ToArray();
+        // TODO: Can we make this buffer smaller?
+        var moveBuffer = new Move[128];
+        var moves = moveBuffer.AsSpan();
+        // use non-alloc version for the speeeeeeddddddd
+        _board.GetLegalMovesNonAlloc(ref moves, quiesceSearch);
+        // create buffer based on span size, note that GetLegalMovesNonAlloc changes the length of the span
+        // based on the number of moves available.
+        var moveScores = new int[moves.Length];
+        // assign scores
+        for (var i = 0; i < moves.Length; i++)
+        {
+            var move = moves[i];
+            // negate all scores so we don't have to reverse the move list later
+            moveScores[i] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -1000000 :
+                move.IsCapture ? -1 * (1000 * (int)move.CapturePieceType - (int)move.MovePieceType) :
+                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? -900 :
+                -1 * _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
+        }
+
+        // sort moves using the negative scores as keys
+        moveScores.AsSpan().Sort(moves);
 
         var bestMove = Move.NullMove;
         int startingAlpha = alpha,
             movesSearched = 0;
 
+        // search function alias for the next iteration, trying to save some tokens
         int NextSearch(int newAlpha, int newBeta, int depthReduction = 1) =>
             -Search(depth - depthReduction, ply + 1, newAlpha, newBeta);
 
