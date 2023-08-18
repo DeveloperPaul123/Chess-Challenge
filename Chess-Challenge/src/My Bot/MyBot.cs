@@ -234,11 +234,11 @@ public class MyBot : IChessBot
 
             // check if time expired
             if (_timer.MillisecondsElapsedThisTurn >= _maxThinkTime)
-                return 30000;
+                return 100_000;
         }
 
         // check for terminal position            
-        if (!quiesceSearch && moves.Length == 0) return _board.IsInCheck() ? -100000 + ply : 0;
+        if (!quiesceSearch && moves.Length == 0) return _board.IsInCheck() ? -100_000 + ply : 0;
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
