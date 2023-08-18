@@ -141,11 +141,11 @@ public class MyBot : IChessBot
 
             // check for futility pruning conditions, use depth * pawn value
             canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
+            
         }
 
         // TODO: Can we make this buffer smaller?
-        var moveBuffer = new Move[128];
-        var moves = moveBuffer.AsSpan();
+        Span<Move> moves = stackalloc Move[128];
         // use non-alloc version for the speeeeeeddddddd
         _board.GetLegalMovesNonAlloc(ref moves, quiesceSearch);
         // create buffer based on span size, note that GetLegalMovesNonAlloc changes the length of the span
