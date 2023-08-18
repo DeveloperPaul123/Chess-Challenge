@@ -156,10 +156,11 @@ public class MyBot : IChessBot
         {
             var move = moves[i];
             // negate all scores so we don't have to reverse the move list later
-            moveScores[i] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -1000000 :
-                move.IsCapture ? -1 * (1000 * (int)move.CapturePieceType - (int)move.MovePieceType) :
-                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? -900 :
-                -1 * _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index, move.TargetSquare.Index];
+            moveScores[i] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -9_000_000 :
+                move.IsCapture ? -1 * (1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType) :
+                move.IsPromotion ? -10_000 :
+                _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? -900_000 :
+                -1 * _moveHistory[ply & 1, move.StartSquare.Index, move.TargetSquare.Index];
         }
 
         // sort moves using the negative scores as keys
@@ -216,7 +217,7 @@ public class MyBot : IChessBot
                     if (!quiesceSearch && !bestMove.IsCapture)
                     {
                         // add it to history
-                        _moveHistory[_board.IsWhiteToMove ? 1 : 0, move.StartSquare.Index,
+                        _moveHistory[ply & 1, move.StartSquare.Index,
                             move.TargetSquare.Index] += depth * depth;
 
                         if (bestMove != _killerMoves[0, ply])
