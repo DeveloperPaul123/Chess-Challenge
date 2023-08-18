@@ -256,30 +256,24 @@ public class MyBot : IChessBot
 
     private int Evaluate()
     {
-        int mg = 0, eg = 0, phase = 0;
+        int middleGame = 0, endGame = 0, phase = 0, sideToMove = 2, piece, square;
 
-        for (sbyte b = 0; b <= 1; b++)
+        for (; --sideToMove >= 0; middleGame = -middleGame, endGame = -endGame)
         {
             // evaluate white first
-            for (var piece = PieceType.Pawn; piece <= PieceType.King; piece++)
+            for (piece = -1; ++piece < 6;)
             {
-                var bitboard = _board.GetPieceBitboard(piece, b == 0);
-                while (bitboard != 0)
+                for (ulong mask = _board.GetPieceBitboard((PieceType)piece + 1, sideToMove > 0); mask != 0;)
                 {
-                    var sq = BitboardHelper.ClearAndGetIndexOfLSB(ref bitboard) ^ (b == 0 ? 56 : 0);
-                    mg += _unpackedPestoTables[sq][(int)piece - 1];
-                    // endgame value is in the same array, but offset by 6
-                    // instead of doing piece -1 + 6, we can just do piece + 5
-                    eg += _unpackedPestoTables[sq][(int)piece + 5];
-                    phase += _piecePhase[(int)piece - 1];
+                    phase += _piecePhase[piece];
+                    square = BitboardHelper.ClearAndGetIndexOfLSB(ref mask) ^ 56 * sideToMove;
+                    middleGame += _unpackedPestoTables[square][piece];
+                    endGame += _unpackedPestoTables[square][piece + 6];
                 }
             }
-
-            mg = -mg;
-            eg = -eg;
         }
 
-        return (mg * phase + eg * (24 - phase)) / 24 * (_board.IsWhiteToMove ? 1 : -1);
+        return (middleGame * phase + endGame * (24 - phase)) / 24 * (_board.IsWhiteToMove ? 1 : -1);
     }
 
     public Move Think(Board board, Timer timer)
