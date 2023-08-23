@@ -91,10 +91,11 @@ public class MyBot : IChessBot
         bool quiesceSearch = depth <= 0,
             notRoot = ply > 0,
             isInCheck = _board.IsInCheck(),
-            isPrincipleVariation = beta - alpha > 1,
+            notPrincipleVariation = beta - alpha <= 1,
             canPrune = false;
 
-        var bestScore = -9999999;
+        int bestScore = -9999999,
+            moveScoreIndex = -1;
 
         if (notRoot && _board.IsRepeatedPosition()) return 0;
 
@@ -119,7 +120,7 @@ public class MyBot : IChessBot
         }
         // no pruning in q-search
         // null move pruning only when allowed and we're not in check
-        else if (!isInCheck && !isPrincipleVariation)
+        else if (!isInCheck && notPrincipleVariation)
         {
             // reverse futility pruning
             var staticEval = Evaluate();
@@ -141,7 +142,7 @@ public class MyBot : IChessBot
 
             // check for futility pruning conditions, use depth * pawn value
             canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
-            
+
         }
 
         // TODO: Can we make this buffer smaller?
@@ -152,11 +153,11 @@ public class MyBot : IChessBot
         // based on the number of moves available.
         var moveScores = new int[moves.Length];
         // assign scores
-        for (var i = 0; i < moves.Length; i++)
+        for (; ++moveScoreIndex < moves.Length;)
         {
-            var move = moves[i];
+            var move = moves[moveScoreIndex];
             // negate all scores so we don't have to reverse the move list later
-            moveScores[i] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -9_000_000 :
+            moveScores[moveScoreIndex] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -9_000_000 :
                 move.IsCapture ? -1 * (1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType) :
                 move.IsPromotion ? -10_000 :
                 _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? -900_000 :
@@ -178,7 +179,7 @@ public class MyBot : IChessBot
         {
             // futility pruning
             var isTacticalMove = move.IsCapture || move.IsPromotion || isInCheck;
-            if (!isTacticalMove && !isPrincipleVariation && canPrune && movesSearched > 0) continue;
+            if (!isTacticalMove && notPrincipleVariation && canPrune && movesSearched > 0) continue;
 
             _board.MakeMove(move);
 
@@ -187,7 +188,7 @@ public class MyBot : IChessBot
             if (movesSearched++ == 0 || quiesceSearch)
                 eval = NextSearch(-beta, -alpha);
             // LMR conditions
-            else if (movesSearched >= (isPrincipleVariation ? 7 : 3) && depth >= 3 &&
+            else if (movesSearched >= (notPrincipleVariation ? 3 : 7) && depth >= 3 &&
                      !isTacticalMove)
             {
                 // null window search
