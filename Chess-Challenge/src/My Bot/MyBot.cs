@@ -96,11 +96,12 @@ public class MyBot : IChessBot
 
         int bestScore = -9999999,
             moveScoreIndex = -1;
+        var boardZobrist = _board.ZobristKey;
 
         if (notRoot && _board.IsRepeatedPosition()) return 0;
 
-        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[_board.ZobristKey % 1_048_576UL];
-        if (zobristHash == _board.ZobristKey && notRoot &&
+        var (zobristHash, score, ttDepth, flag, _) = _transpositionTable[boardZobrist % 1_048_576UL];
+        if (zobristHash == boardZobrist && notRoot &&
             ttDepth >= depth)
         {
             if (flag == LowerBound)
@@ -157,7 +158,7 @@ public class MyBot : IChessBot
         {
             var move = moves[moveScoreIndex];
             // negate all scores so we don't have to reverse the move list later
-            moveScores[moveScoreIndex] = _transpositionTable[_board.ZobristKey % 1_048_576UL].Move == move ? -9_000_000 :
+            moveScores[moveScoreIndex] = _transpositionTable[boardZobrist % 1_048_576UL].Move == move ? -9_000_000 :
                 move.IsCapture ? -1 * (1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType) :
                 move.IsPromotion ? -10_000 :
                 _killerMoves[0, ply] == move || _killerMoves[1, ply] == move ? -900_000 :
@@ -183,18 +184,22 @@ public class MyBot : IChessBot
 
             _board.MakeMove(move);
 
-            int eval;
             // first child searches with normal window, otherwise do a null window search
-            if (movesSearched++ == 0 || quiesceSearch)
-                eval = NextSearch(-beta, -alpha);
-            // LMR conditions
-            else if (movesSearched >= (notPrincipleVariation ? 3 : 7) && depth >= 3 &&
-                     !isTacticalMove)
-            {
-                // null window search
-                eval = NextSearch(-(alpha + 1), -alpha, 2);
-            }
-            else eval = alpha + 1;
+            // combines null window and LMR conditions
+            // should be equivalent to:
+            // if (movesSearched++ == 0 || quiesceSearch)
+            //     eval = NextSearch(-beta, -alpha);
+
+            // else if (movesSearched >= (notPrincipleVariation ? 3 : 7) && depth >= 3 &&
+            //          !isTacticalMove)
+            // {
+            //     // null window search
+            //     eval = NextSearch(-(alpha + 1), -alpha, 2);
+            // }
+            // else eval = alpha + 1;
+            int eval = (movesSearched++ == 0 || quiesceSearch) ? NextSearch(-beta, -alpha) :
+                (movesSearched >= (notPrincipleVariation ? 3 : 7) && depth >= 3 && !isTacticalMove)
+                    ? NextSearch(-(alpha + 1), -alpha, 2) : alpha + 1;
 
             // check result to see if we need to do a full re-search
             // if we fail high, we re-search
@@ -243,9 +248,9 @@ public class MyBot : IChessBot
 
         // after finding the best move, store it in the transposition table
         // note we use the original alpha
-        _transpositionTable[_board.ZobristKey % 1_048_576UL] = new
+        _transpositionTable[boardZobrist % 1_048_576UL] = new
         (
-            _board.ZobristKey,
+            boardZobrist,
             bestScore,
             (sbyte)depth,
             bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound,
