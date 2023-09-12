@@ -85,7 +85,7 @@ public class MyBot : IChessBot
              depth <= 50;
              depth++)
         {
-            Search(depth, 0, -9999999, 9999999);
+            Search(depth, 0, -9999999, 9999999, true);
 
             // check if we're out of time
             if (timer.MillisecondsElapsedThisTurn >= maxThinkTime) break;
@@ -93,7 +93,7 @@ public class MyBot : IChessBot
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
 
-        int Search(int depth, int ply, int alpha, int beta, bool allowNullMove = true)
+        int Search(int depth, int ply, int alpha, int beta, bool allowNullMove)
         {
             // declare these all at once to save tokens
             bool quiesceSearch = depth <= 0,
@@ -123,6 +123,10 @@ public class MyBot : IChessBot
             int bestScore = -9999999,
                 moveScoreIndex = 0;
 
+            // search function alias for the next iteration, trying to save some tokens
+            int NextSearch(int newAlpha, int newBeta, int depthReduction = 1, bool allowNull = true) =>
+                -Search(depth - depthReduction, ply + 1, newAlpha, newBeta, allowNull);
+
             if (quiesceSearch)
             {
                 if ((bestScore = Evaluate()) >= beta) return bestScore;
@@ -141,8 +145,8 @@ public class MyBot : IChessBot
                     board.TrySkipTurn();
                     // depth reduction factor used for null move pruning, commented out for tokens
                     // private const int DepthReductionFactor = 3;
-                    var nullMoveScore = -Search(depth - 1 - 3, ply + 1, -beta, -beta + 1,
-                        false);
+                    var nullMoveScore = NextSearch(-beta, -beta + 1,
+                        4, false);
                     board.UndoSkipTurn();
 
                     // beta cutoff
@@ -151,7 +155,7 @@ public class MyBot : IChessBot
                 }
 
                 // check for futility pruning conditions, use depth * pawn value
-                canPrune = depth <= 4 && staticEval + _pieceValues[0] * depth <= alpha;
+                canPrune = depth <= 4 && staticEval + 82 * depth <= alpha;
 
             }
 
@@ -182,10 +186,6 @@ public class MyBot : IChessBot
             var bestMove = Move.NullMove;
             int startingAlpha = alpha,
                 movesSearched = 0;
-
-            // search function alias for the next iteration, trying to save some tokens
-            int NextSearch(int newAlpha, int newBeta, int depthReduction = 1) =>
-                -Search(depth - depthReduction, ply + 1, newAlpha, newBeta);
 
             foreach (var move in moves)
             {
@@ -240,9 +240,7 @@ public class MyBot : IChessBot
                             // shift moves down
                             killerMoves[1, ply] = killerMoves[0, ply];
                             killerMoves[0, ply] = bestMove;
-
                         }
-
                         break;
                     }
                 }
