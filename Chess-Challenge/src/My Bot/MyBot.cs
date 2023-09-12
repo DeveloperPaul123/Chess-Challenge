@@ -8,31 +8,24 @@ public class MyBot : IChessBot
 {
 
     // Pawn, Knight, Bishop, Rook, Queen, King 
-    private readonly short[] _pieceValues =
+    private readonly int[] _pieceValues =
     {
         82, 337, 365, 477, 1025, 10000, // Middlegame
         94, 281, 297, 512, 936, 10000 // Endgame
-    };
+    },
+        _moveScores = new int[128];
 
-    private readonly int[] _moveScores = new int[128];
 
     // unpacked pesto table
     private readonly int[][] _unpackedPestoTables;
 
     // match types for transposition table
-    private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
+    // private const sbyte Exact = 0, LowerBound = -1, UpperBound = 1, Invalid = -2;
 
     private Move _bestMoveRoot = Move.NullMove;
 
     //14 bytes per entry, likely will align to 16 bytes due to padding (if it aligns to 32, recalculate max TP table size)
-    private record struct Transposition(
-        ulong ZobristHash,
-        int Evaluation,
-        sbyte Depth,
-        sbyte Flag,
-        Move Move);
-
-    private readonly Transposition[] _transpositionTable = new Transposition[1_048_576UL];
+    private readonly (ulong, int, int, int, Move)[] _transpositionTable = new (ulong, int, int, int, Move)[1_048_576UL];
 
     public MyBot()
     {
@@ -82,7 +75,7 @@ public class MyBot : IChessBot
 
         // Killer moves: keep track on great moves that caused a cutoff to retry them
         // Based on a lookup by depth, we keep the best 2 moves
-        var killerMoves = new Move[2, 50];
+        var killerMoves = new Move[2, 100];
 
         // side, move from, move to
         var moveHistory = new int[2, 64, 64];
@@ -110,20 +103,20 @@ public class MyBot : IChessBot
                 canPrune = false;
 
             var boardZobrist = board.ZobristKey;
-            ref var ttEntry = ref _transpositionTable[boardZobrist % 1_048_576UL];
+            var (zobristHash, score, ttDepth, flag, ttMove) = _transpositionTable[boardZobrist % 1_048_576UL];
 
             if (notRoot && board.IsRepeatedPosition()) return 0;
 
-            var (zobristHash, score, ttDepth, flag, _) = ttEntry;
             if (zobristHash == boardZobrist && notRoot &&
                 ttDepth >= depth)
             {
-                if (flag == LowerBound)
+                // 0 = exact, -1 = lower bound, 1 = upper bound
+                if (flag == -1)
                     alpha = Math.Max(alpha, score);
-                else if (flag == UpperBound)
+                else if (flag == 1)
                     beta = Math.Min(beta, score);
 
-                if (alpha >= beta || flag == Exact)
+                if (alpha >= beta || flag == 0)
                     return score;
             }
 
@@ -172,7 +165,7 @@ public class MyBot : IChessBot
             foreach (var move in moves)
                 // negate all scores so we don't have to reverse the move list later
                 _moveScores[moveScoreIndex++] = -(
-                    ttEntry.Move == move ? 9_000_000 :
+                    ttMove == move ? 9_000_000 :
                     move.IsCapture ? 1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType :
                     move.IsPromotion ? 10_000 :
                     killerMoves[0, ply] == move || killerMoves[1, ply] == move ? 900_000 :
@@ -261,12 +254,13 @@ public class MyBot : IChessBot
 
             // after finding the best move, store it in the transposition table
             // note we use the original alpha
-            ttEntry = new
+            _transpositionTable[boardZobrist % 1_048_576UL] =
             (
                 boardZobrist,
                 bestScore,
-                (sbyte)depth,
-                bestScore >= beta ? LowerBound : bestScore > startingAlpha ? Exact : UpperBound,
+                depth,
+                // 0 = exact, -1 = lower bound, 1 = upper bound
+                bestScore >= beta ? -1 : bestScore > startingAlpha ? 0 : 1,
                 bestMove
             );
 
@@ -294,7 +288,7 @@ public class MyBot : IChessBot
                         endGame += _unpackedPestoTables[square][piece + 6];
                     }
 
-            return (middleGame * phase + endGame * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
+            return (middleGame * phase + endGame * (24 - phase)) / (board.IsWhiteToMove ? 24 : -24);
         }
     }
 }
