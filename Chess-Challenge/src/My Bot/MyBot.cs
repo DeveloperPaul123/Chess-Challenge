@@ -69,26 +69,26 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        var maxThinkTime = timer.MillisecondsRemaining / 25;
+        int maxThinkTime = timer.MillisecondsRemaining / 25,
+            depth = 1;
 
         _bestMoveRoot = Move.NullMove;
 
         // Killer moves: keep track on great moves that caused a cutoff to retry them
         // Based on a lookup by depth, we keep the best 2 moves
-        var killerMoves = new Move[2, 100];
+        var killerMoves = new Move[1000];
 
         // side, move from, move to
         var moveHistory = new int[2, 64, 64];
 
         // https://www.chessprogramming.org/Iterative_Deepening
-        for (sbyte depth = 1;
-             depth <= 50;
-             depth++)
+        for (; ; )
         {
             Search(depth, 0, -9999999, 9999999, true);
 
             // check if we're out of time
             if (timer.MillisecondsElapsedThisTurn >= maxThinkTime) break;
+            depth++;
         }
 
         return _bestMoveRoot.IsNull ? board.GetLegalMoves().First() : _bestMoveRoot;
@@ -99,14 +99,19 @@ public class MyBot : IChessBot
             bool quiesceSearch = depth <= 0,
                 notRoot = ply > 0,
                 isInCheck = board.IsInCheck(),
-                notPrincipleVariation = beta - alpha <= 1,
+                notPrincipleVariation = beta - alpha == 1,
                 canPrune = false;
+
+            // check for draws
+            if (notRoot && board.IsRepeatedPosition()) return 0;
 
             var boardZobrist = board.ZobristKey;
             var (zobristHash, score, ttDepth, flag, ttMove) = _transpositionTable[boardZobrist % 1_048_576UL];
 
-            if (notRoot && board.IsRepeatedPosition()) return 0;
+            // check extensions
+            if (isInCheck) depth++;
 
+            // transposition table lookup
             if (zobristHash == boardZobrist && notRoot &&
                 ttDepth >= depth)
             {
@@ -129,7 +134,8 @@ public class MyBot : IChessBot
 
             if (quiesceSearch)
             {
-                if ((bestScore = Evaluate()) >= beta) return bestScore;
+                bestScore = Evaluate();
+                if (bestScore >= beta) return bestScore;
                 alpha = Math.Max(alpha, bestScore);
             }
             // no pruning in q-search
@@ -138,7 +144,7 @@ public class MyBot : IChessBot
             {
                 // reverse futility pruning
                 var staticEval = Evaluate();
-                if (staticEval - _pieceValues[0] * depth >= beta) return staticEval;
+                if (staticEval - 82 * depth >= beta) return staticEval;
 
                 if (allowNullMove)
                 {
@@ -162,7 +168,7 @@ public class MyBot : IChessBot
             // TODO: Can we make this buffer smaller?
             Span<Move> moves = stackalloc Move[128];
             // use non-alloc version for the speeeeeeddddddd
-            board.GetLegalMovesNonAlloc(ref moves, quiesceSearch);
+            board.GetLegalMovesNonAlloc(ref moves, quiesceSearch && !isInCheck);
             // create buffer based on span size, note that GetLegalMovesNonAlloc changes the length of the span
             // based on the number of moves available.
             // assign scores
@@ -172,7 +178,7 @@ public class MyBot : IChessBot
                     ttMove == move ? 9_000_000 :
                     move.IsCapture ? 1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType :
                     move.IsPromotion ? 10_000 :
-                    killerMoves[0, ply] == move || killerMoves[1, ply] == move ? 900_000 :
+                    killerMoves[ply] == move ? 900_000 :
                     moveHistory[ply & 1, move.StartSquare.Index, move.TargetSquare.Index]
                 );
 
@@ -210,12 +216,12 @@ public class MyBot : IChessBot
                 // else eval = alpha + 1;
                 var eval = movesSearched++ == 0 || quiesceSearch ? NextSearch(-beta, -alpha) :
                     movesSearched >= (notPrincipleVariation ? 3 : 7) && depth >= 3 && !isTacticalMove
-                        ? NextSearch(-(alpha + 1), -alpha, 2) : alpha + 1;
+                        ? NextSearch(-alpha - 1, -alpha, 2) : alpha + 1;
 
                 // check result to see if we need to do a full re-search
                 // if we fail high, we re-search
                 if (eval > alpha &&
-                    alpha < (eval = NextSearch(-(alpha + 1), -alpha)) && eval < beta)
+                    alpha < (eval = NextSearch(-alpha - 1, -alpha)) && eval < beta)
                     eval = NextSearch(-beta, -eval);
 
                 board.UndoMove(move);
@@ -225,7 +231,7 @@ public class MyBot : IChessBot
                     bestScore = eval;
                     bestMove = move;
                     // update move at root
-                    if (ply == 0) _bestMoveRoot = move;
+                    if (!notRoot) _bestMoveRoot = move;
 
                     // update alpha and check for beta cutoff
                     alpha = Math.Max(alpha, eval);
@@ -236,10 +242,8 @@ public class MyBot : IChessBot
                             // add it to history
                             moveHistory[ply & 1, move.StartSquare.Index,
                                 move.TargetSquare.Index] += depth * depth;
-
-                            // shift moves down
-                            killerMoves[1, ply] = killerMoves[0, ply];
-                            killerMoves[0, ply] = bestMove;
+                            // add to killer moves table
+                            killerMoves[ply] = bestMove;
                         }
                         break;
                     }
