@@ -1,14 +1,13 @@
-D:\Repositories\cutechess\build-qt6\Release\cutechess-cli.exe `
-    -engine name="MyBot" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" arg="uci" arg="MyBot" `
-    -engine name="MyBotv621" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" arg="uci" arg="MyBotv621" `
-    -each proto=uci tc=0/10+0 `
-    -maxmoves 2000 `
+fast-chess `
+    -engine name="MyBot" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" args="uci MyBot" `
+    -engine name="MyBotv621" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" args="uci MyBotv621" `
+    -each tc=10+0 `
+    -draw movecount=2000 `
     -games 2 `
     -repeat `
-    -resultformat wide2 `
-    -ratinginterval 20 `
-    -rounds 5000 `
-    -concurrency 6 `
+    -output format=cutechess `
+    -rounds 1000 `
+    -concurrency 10 `
+    -pgnout notation=san file=out.pgn `
     -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05 `
-    -pgnout "$PSScriptRoot/out.pgn" `
-    -openings file="$PSScriptRoot/UHO_XXL_+1.00_+1.29.epd" format=epd order=random policy=round
+    -openings file="$PSScriptRoot/UHO_XXL_+1.00_+1.29.epd" format=epd order=random
