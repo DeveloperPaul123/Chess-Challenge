@@ -35,6 +35,7 @@ namespace ChessChallenge.Application
             NegamaxTier2Bot,
             StockFish,
             StockFish10,
+            NebulaAI2
         }
 
         // Game state
@@ -241,6 +242,7 @@ namespace ChessChallenge.Application
                 PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
                 PlayerType.StockFish => new Stockfish(),
                 PlayerType.StockFish10 => new Stockfish(10),
+                PlayerType.NebulaAI2 => new NebulaAI2(),
                 _ => null
             };
         }
