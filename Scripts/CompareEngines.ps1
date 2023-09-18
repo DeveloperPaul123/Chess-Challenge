@@ -1,6 +1,6 @@
 fast-chess `
     -engine name="MyBot" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" args="uci MyBot" `
-    -engine name="MyBotv621" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" args="uci MyBotv621" `
+    -engine name="MyBotv63" cmd="$PSScriptRoot/../Chess-Challenge/bin/Release/net6.0/Chess-Challenge.exe" args="uci MyBotv63" `
     -each tc=10+0 `
     -draw movecount=2000 `
     -games 2 `
