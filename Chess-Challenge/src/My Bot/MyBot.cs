@@ -79,7 +79,7 @@ public class MyBot : IChessBot
         var killerMoves = new Move[1000];
 
         // side, move from, move to
-        var moveHistory = new int[2, 64, 64];
+        var moveHistory = new int[2, 65536];
 
         // https://www.chessprogramming.org/Iterative_Deepening
         for (; ; )
@@ -179,7 +179,7 @@ public class MyBot : IChessBot
                     move.IsCapture ? 1_000_000 * (int)move.CapturePieceType - (int)move.MovePieceType :
                     move.IsPromotion ? 10_000 :
                     killerMoves[ply] == move ? 900_000 :
-                    moveHistory[ply & 1, move.StartSquare.Index, move.TargetSquare.Index]
+                    moveHistory[ply & 1, move.RawValue & 4095]
                 );
 
 
@@ -240,8 +240,7 @@ public class MyBot : IChessBot
                         if (!quiesceSearch && !bestMove.IsCapture)
                         {
                             // add it to history
-                            moveHistory[ply & 1, move.StartSquare.Index,
-                                move.TargetSquare.Index] += depth * depth;
+                            moveHistory[ply & 1, move.RawValue & 4095] += depth * depth;
                             // add to killer moves table
                             killerMoves[ply] = bestMove;
                         }
