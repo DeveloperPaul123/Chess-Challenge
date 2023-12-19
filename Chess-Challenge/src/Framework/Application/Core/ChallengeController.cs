@@ -8,8 +8,11 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ChessChallenge.API;
 using static ChessChallenge.Application.Settings;
 using static ChessChallenge.Application.ConsoleHelper;
+using Board = ChessChallenge.Chess.Board;
+using Move = ChessChallenge.Chess.Move;
 
 namespace ChessChallenge.Application
 {
@@ -19,16 +22,30 @@ namespace ChessChallenge.Application
         {
             Human,
             MyBot,
-            EvilBot
+            MyBotv2,
+            MyBotv3,
+            MyBotv4,
+            MyBotv5,
+            MyBotv6,
+            MyBotv61,
+            MyBotv62,
+            MyBotv621,
+            MyBotv63,
+            EvilBot,
+            NegamaxBot,
+            NegamaxTier2Bot,
+            StockFish,
+            StockFish10,
+            NebulaAI2
         }
 
         // Game state
-        Random rng;
+        readonly Random rng;
         int gameID;
         bool isPlaying;
         Board board;
         public ChessPlayer PlayerWhite { get; private set; }
-        public ChessPlayer PlayerBlack {get;private set;}
+        public ChessPlayer PlayerBlack { get; private set; }
 
         float lastMoveMadeTime;
         bool isWaitingToPlayMove;
@@ -40,7 +57,7 @@ namespace ChessChallenge.Application
         readonly string[] botMatchStartFens;
         int botMatchGameIndex;
         public BotMatchStats BotStatsA { get; private set; }
-        public BotMatchStats BotStatsB {get;private set;}
+        public BotMatchStats BotStatsB { get; private set; }
         bool botAPlaysWhite;
 
 
@@ -53,12 +70,13 @@ namespace ChessChallenge.Application
         readonly BoardUI boardUI;
         readonly MoveGenerator moveGenerator;
         readonly int tokenCount;
+        readonly int debugTokenCount;
         readonly StringBuilder pgns;
 
         public ChallengeController()
         {
             Log($"Launching Chess-Challenge version {Settings.Version}");
-            tokenCount = GetTokenCount();
+            (tokenCount, debugTokenCount) = GetTokenCount();
             Warmer.Warm();
 
             rng = new Random();
@@ -69,7 +87,8 @@ namespace ChessChallenge.Application
 
             BotStatsA = new BotMatchStats("IBot");
             BotStatsB = new BotMatchStats("IBot");
-            botMatchStartFens = FileHelper.ReadResourceFile("Fens.txt").Split('\n').Where(fen => fen.Length > 0).ToArray();
+            botMatchStartFens = FileHelper.ReadResourceFile("Fens.txt").Split('\n').Where(fen => fen.Length > 0)
+                .ToArray();
             botTaskWaitHandle = new AutoResetEvent(false);
 
             StartNewGame(PlayerType.Human, PlayerType.MyBot);
@@ -90,6 +109,7 @@ namespace ChessChallenge.Application
                 botTaskWaitHandle = new AutoResetEvent(false);
                 Task.Factory.StartNew(BotThinkerThread, TaskCreationOptions.LongRunning);
             }
+
             // Board Setup
             board = new Board();
             bool isGameWithHuman = whiteType is PlayerType.Human || blackType is PlayerType.Human;
@@ -131,6 +151,7 @@ namespace ChessChallenge.Application
                         OnMoveChosen(move);
                     }
                 }
+
                 // Terminate if no longer playing this game
                 if (threadID != gameID)
                 {
@@ -145,7 +166,8 @@ namespace ChessChallenge.Application
             API.Board botBoard = new(board);
             try
             {
-                API.Timer timer = new(PlayerToMove.TimeRemainingMs);
+                API.Timer timer = new(PlayerToMove.TimeRemainingMs, PlayerNotOnMove.TimeRemainingMs,
+                    GameDurationMilliseconds, IncrementMilliseconds);
                 API.Move move = PlayerToMove.Bot.Think(botBoard, timer);
                 return new Move(move.RawValue);
             }
@@ -155,9 +177,9 @@ namespace ChessChallenge.Application
                 hasBotTaskException = true;
                 botExInfo = ExceptionDispatchInfo.Capture(e);
             }
+
             return Move.NullMove;
         }
-
 
 
         void NotifyTurnToMove()
@@ -203,17 +225,39 @@ namespace ChessChallenge.Application
             }
         }
 
-        ChessPlayer CreatePlayer(PlayerType type)
+        public static IChessBot? CreateBot(PlayerType type)
         {
             return type switch
             {
-                PlayerType.MyBot => new ChessPlayer(new MyBot(), type, GameDurationMilliseconds),
-                PlayerType.EvilBot => new ChessPlayer(new EvilBot(), type, GameDurationMilliseconds),
-                _ => new ChessPlayer(new HumanPlayer(boardUI), type)
+                PlayerType.MyBot => new MyBot(),
+                PlayerType.MyBotv2 => new MyBotv2(),
+                PlayerType.MyBotv3 => new MyBotv3(),
+                PlayerType.MyBotv4 => new MyBotv4(),
+                PlayerType.MyBotv5 => new MyBotv5(),
+                PlayerType.MyBotv6 => new MyBotv6(),
+                PlayerType.MyBotv61 => new MyBotv61(),
+                PlayerType.MyBotv62 => new MyBotv62(),
+                PlayerType.MyBotv621 => new MyBotv621(),
+                PlayerType.MyBotv63 => new MyBotv63(),
+                PlayerType.EvilBot => new EvilBot(),
+                PlayerType.NegamaxBot => new NegamaxBot(),
+                PlayerType.NegamaxTier2Bot => new NegamaxTier2(),
+                PlayerType.StockFish => new Stockfish(),
+                PlayerType.StockFish10 => new Stockfish(10),
+                PlayerType.NebulaAI2 => new NebulaAI2(),
+                _ => null
             };
         }
 
-        static int GetTokenCount()
+        ChessPlayer CreatePlayer(PlayerType type)
+        {
+            return type != PlayerType.Human
+                ? new ChessPlayer(CreateBot(type) ?? throw new InvalidOperationException(), type,
+                    GameDurationMilliseconds)
+                : new ChessPlayer(new HumanPlayer(boardUI), type);
+        }
+
+        static (int totalTokenCount, int debugTokenCount) GetTokenCount()
         {
             string path = Path.Combine(Directory.GetCurrentDirectory(), "src", "My Bot", "MyBot.cs");
 
@@ -226,6 +270,7 @@ namespace ChessChallenge.Application
         {
             if (IsLegal(chosenMove))
             {
+                PlayerToMove.AddIncrement(IncrementMilliseconds);
                 if (PlayerToMove.IsBot)
                 {
                     moveToPlay = chosenMove;
@@ -242,7 +287,9 @@ namespace ChessChallenge.Application
                 string moveName = MoveUtility.GetMoveNameUCI(chosenMove);
                 string log = $"Illegal move: {moveName} in position: {FenUtility.CurrentFen(board)}";
                 Log(log, true, ConsoleColor.Red);
-                GameResult result = PlayerToMove == PlayerWhite ? GameResult.WhiteIllegalMove : GameResult.BlackIllegalMove;
+                GameResult result = PlayerToMove == PlayerWhite
+                    ? GameResult.WhiteIllegalMove
+                    : GameResult.BlackIllegalMove;
                 EndGame(result);
             }
         }
@@ -282,7 +329,8 @@ namespace ChessChallenge.Application
                     Log("Game Over: " + result, false, ConsoleColor.Blue);
                 }
 
-                string pgn = PGNCreator.CreatePGN(board, result, GetPlayerName(PlayerWhite), GetPlayerName(PlayerBlack));
+                string pgn = PGNCreator.CreatePGN(board, result, GetPlayerName(PlayerWhite),
+                    GetPlayerName(PlayerBlack));
                 pgns.AppendLine(pgn);
 
                 // If 2 bots playing each other, start next game automatically.
@@ -301,7 +349,6 @@ namespace ChessChallenge.Application
                         autoNextTimer.Elapsed += (s, e) => AutoStartNextBotMatchGame(originalGameID, autoNextTimer);
                         autoNextTimer.AutoReset = false;
                         autoNextTimer.Start();
-
                     }
                     else if (autoStartNextBotMatch)
                     {
@@ -317,6 +364,7 @@ namespace ChessChallenge.Application
             {
                 StartNewGame(PlayerBlack.PlayerType, PlayerWhite.PlayerType);
             }
+
             timer.Close();
         }
 
@@ -343,7 +391,8 @@ namespace ChessChallenge.Application
                 {
                     stats.NumLosses++;
                     stats.NumTimeouts += (result is GameResult.WhiteTimeout or GameResult.BlackTimeout) ? 1 : 0;
-                    stats.NumIllegalMoves += (result is GameResult.WhiteIllegalMove or GameResult.BlackIllegalMove) ? 1 : 0;
+                    stats.NumIllegalMoves +=
+                        (result is GameResult.WhiteIllegalMove or GameResult.BlackIllegalMove) ? 1 : 0;
                 }
             }
         }
@@ -384,9 +433,10 @@ namespace ChessChallenge.Application
             string nameB = GetPlayerName(PlayerBlack);
             boardUI.DrawPlayerNames(nameW, nameB, PlayerWhite.TimeRemainingMs, PlayerBlack.TimeRemainingMs, isPlaying);
         }
+
         public void DrawOverlay()
         {
-            BotBrainCapacityUI.Draw(tokenCount, MaxTokenCount);
+            BotBrainCapacityUI.Draw(tokenCount, debugTokenCount, MaxTokenCount);
             MenuUI.DrawButtons(this);
             MatchStatsUI.DrawMatchStats(this);
         }
@@ -405,6 +455,7 @@ namespace ChessChallenge.Application
                 nameA += " (A)";
                 nameB += " (B)";
             }
+
             BotStatsA = new BotMatchStats(nameA);
             BotStatsB = new BotMatchStats(nameB);
             botAPlaysWhite = true;
@@ -414,12 +465,14 @@ namespace ChessChallenge.Application
 
 
         ChessPlayer PlayerToMove => board.IsWhiteToMove ? PlayerWhite : PlayerBlack;
+        ChessPlayer PlayerNotOnMove => board.IsWhiteToMove ? PlayerBlack : PlayerWhite;
+
         public int TotalGameCount => botMatchStartFens.Length * 2;
         public int CurrGameNumber => Math.Min(TotalGameCount, botMatchGameIndex + 1);
         public string AllPGNs => pgns.ToString();
 
 
-        bool IsLegal(Move givenMove)
+        private bool IsLegal(Move givenMove)
         {
             var moves = moveGenerator.GenerateMoves(board);
             foreach (var legalMove in moves)

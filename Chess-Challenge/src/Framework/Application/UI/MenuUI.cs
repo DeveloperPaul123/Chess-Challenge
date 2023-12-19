@@ -17,17 +17,49 @@ namespace ChessChallenge.Application
             // Game Buttons
             if (NextButtonInRow("Human vs MyBot", ref buttonPos, spacing, buttonSize))
             {
-                var whiteType = controller.HumanWasWhiteLastGame ? ChallengeController.PlayerType.MyBot : ChallengeController.PlayerType.Human;
-                var blackType = !controller.HumanWasWhiteLastGame ? ChallengeController.PlayerType.MyBot : ChallengeController.PlayerType.Human;
+                var whiteType = controller.HumanWasWhiteLastGame
+                    ? ChallengeController.PlayerType.MyBot
+                    : ChallengeController.PlayerType.Human;
+                var blackType = !controller.HumanWasWhiteLastGame
+                    ? ChallengeController.PlayerType.MyBot
+                    : ChallengeController.PlayerType.Human;
                 controller.StartNewGame(whiteType, blackType);
             }
+
             if (NextButtonInRow("MyBot vs MyBot", ref buttonPos, spacing, buttonSize))
             {
                 controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot, ChallengeController.PlayerType.MyBot);
             }
+
             if (NextButtonInRow("MyBot vs EvilBot", ref buttonPos, spacing, buttonSize))
             {
-                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot, ChallengeController.PlayerType.EvilBot);
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.EvilBot);
+            }
+
+            if (NextButtonInRow("MyBot vs Negamax", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.NegamaxBot);
+            }
+
+            if (NextButtonInRow("MyBot vs Negamax2", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.NegamaxTier2Bot);
+            }
+
+
+            if (NextButtonInRow("MyBot vs Stockfish (0)", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.StockFish);
+            }
+
+            if (NextButtonInRow("MyBot vs Stockfish (10)", ref buttonPos, spacing, buttonSize))
+            {
+                controller.StartNewBotMatch(ChallengeController.PlayerType.MyBot,
+                    ChallengeController.PlayerType.StockFish10);
             }
 
             // Page buttons
@@ -43,14 +75,17 @@ namespace ChessChallenge.Application
                 File.WriteAllText(fullPath, pgns);
                 ConsoleHelper.Log("Saved games to " + fullPath, false, ConsoleColor.Blue);
             }
+
             if (NextButtonInRow("Rules & Help", ref buttonPos, spacing, buttonSize))
             {
                 FileHelper.OpenUrl("https://github.com/SebLague/Chess-Challenge");
             }
+
             if (NextButtonInRow("Documentation", ref buttonPos, spacing, buttonSize))
             {
                 FileHelper.OpenUrl("https://seblague.github.io/chess-coding-challenge/documentation/");
             }
+
             if (NextButtonInRow("Submission Page", ref buttonPos, spacing, buttonSize))
             {
                 FileHelper.OpenUrl("https://forms.gle/6jjj8jxNQ5Ln53ie6");
@@ -65,6 +100,7 @@ namespace ChessChallenge.Application
             {
                 Program.SetWindowSize(isBigWindow ? Settings.ScreenSizeSmall : Settings.ScreenSizeBig);
             }
+
             if (NextButtonInRow("Exit (ESC)", ref buttonPos, spacing, buttonSize))
             {
                 Environment.Exit(0);

@@ -23,6 +23,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="src\My Bot\MyBotv5.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
+    <Compile Update="src\My Bot\MyBotv4.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
+    <Compile Update="src\My Bot\MyBotv3.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
     <Compile Update="src\My Bot\MyBot.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
@@ -30,6 +39,9 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Compile>
     <Compile Update="src\Evil Bot\EvilBot.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
+    <Compile Update="src\My Bot\MyBotv2.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
   </ItemGroup>
