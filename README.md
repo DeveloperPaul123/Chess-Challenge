@@ -1,6 +1,6 @@
 # Leonidas Chess Bot
 
-This repository contains my entry for the [Chess Coding Challenge](https://youtu.be/Ne40a5LkK6A?si=urkm1MWbZ6jLIwZt) by Sebatian Lague. The bot finished in the top 32 of all entries (600+).
+This repository contains my entry for the [Chess Coding Challenge](https://youtu.be/Ne40a5LkK6A?si=urkm1MWbZ6jLIwZt) by Sebatian Lague. The bot finished [20th](https://github.com/SebLague/Tiny-Chess-Bot-Challenge-Results/blob/fcebda936c5882efdeb61382592bda77f2c1e6c0/RatingsList.txt#L25)~~in the top 32 of all entries (600+)~~!
 
 The original challenge rules are below.
 
